@@ -242,6 +242,26 @@ if __name__ == '__main__':
     # Очистка мусора перед запуском
     cleanup_temp_files()
 
+    # --- ЗАПУСК ФЕЙКОВОГО ВЕБ-СЕРВЕРА ДЛЯ RENDER ---
+    import threading
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    class HealthCheck(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Bot is alive!")
+
+    def run_web_server():
+        port = int(os.environ.get("PORT", 8080))
+        server = HTTPServer(('0.0.0.0', port), HealthCheck)
+        print(f"Web server running on port {port}")
+        server.serve_forever()
+
+    # Запускаем сервер в фоновом потоке
+    threading.Thread(target=run_web_server, daemon=True).start()
+    # -----------------------------------------------
+
     application = ApplicationBuilder().token(TOKEN).build()
     
     conv_handler = ConversationHandler(
