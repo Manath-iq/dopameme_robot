@@ -3,3 +3,4 @@ Pillow
 python-dotenv
 numpy
 scipy
+numba

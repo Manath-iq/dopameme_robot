@@ -3,6 +3,7 @@ from PIL import Image, ImageOps
 from scipy.ndimage import convolve
 import os
 import uuid
+from numba import jit
 
 def resize_image_keep_ratio(image, max_size=600):
     """
@@ -42,34 +43,37 @@ def calc_energy(img_arr):
     
     return np.abs(energy_x) + np.abs(energy_y)
 
+@jit(nopython=True, fastmath=True)
 def find_vertical_seam(energy):
     """
     Find vertical seam with lowest energy using dynamic programming.
+    Optimized with Numba.
     """
     r, c = energy.shape
     m = energy.copy()
-    backtrack = np.zeros_like(m, dtype=int)
+    backtrack = np.zeros((r, c), dtype=np.int64) # Explicit type for numba
 
     for i in range(1, r):
         for j in range(c):
             # Handle edges
             if j == 0:
                 idx = np.argmin(m[i-1, j:j+2])
-                backtrack[i, j] = j + idx
-                min_energy = m[i-1, j + idx]
+                offset = j + idx
+                min_energy = m[i-1, offset]
             elif j == c - 1:
                 idx = np.argmin(m[i-1, j-1:j+1])
-                backtrack[i, j] = j - 1 + idx
-                min_energy = m[i-1, j - 1 + idx]
+                offset = j - 1 + idx
+                min_energy = m[i-1, offset]
             else:
                 idx = np.argmin(m[i-1, j-1:j+2])
-                backtrack[i, j] = j - 1 + idx
-                min_energy = m[i-1, j - 1 + idx]
+                offset = j - 1 + idx
+                min_energy = m[i-1, offset]
             
+            backtrack[i, j] = offset
             m[i, j] += min_energy
 
     # Backtrack to find the path
-    seam = np.zeros(r, dtype=int)
+    seam = np.zeros(r, dtype=np.int64)
     j = np.argmin(m[-1])
     seam[-1] = j
     for i in range(r-2, -1, -1):
@@ -78,12 +82,26 @@ def find_vertical_seam(energy):
         
     return seam
 
+@jit(nopython=True, fastmath=True)
 def remove_vertical_seam(img_arr, seam):
-    r, c, _ = img_arr.shape
-    new_img = np.zeros((r, c - 1, 3), dtype=img_arr.dtype)
+    """
+    Remove the vertical seam from the image.
+    Optimized with Numba (manual loop instead of np.delete).
+    """
+    r, c, ch = img_arr.shape
+    new_img = np.zeros((r, c - 1, ch), dtype=img_arr.dtype)
+    
     for i in range(r):
-        j = seam[i]
-        new_img[i, :, :] = np.delete(img_arr[i, :, :], j, axis=0)
+        skip = seam[i]
+        col_idx = 0
+        for j in range(c):
+            if j == skip:
+                continue
+            new_img[i, col_idx, 0] = img_arr[i, j, 0]
+            new_img[i, col_idx, 1] = img_arr[i, j, 1]
+            new_img[i, col_idx, 2] = img_arr[i, j, 2]
+            col_idx += 1
+            
     return new_img
 
 def liquid_resize(image_path, scale=0.5):
