@@ -6,6 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMe
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 
 from utils.image_generator import generate_meme, generate_demotivator
+from utils.effects import liquid_resize
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -78,6 +79,9 @@ async def handle_user_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton("✅ Сделать Мем", callback_data="user_select_meme"),
             InlineKeyboardButton("Демотиватор", callback_data="user_select_dem")
+        ],
+        [
+            InlineKeyboardButton("✨ Эффекты", callback_data="user_select_effects")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -110,6 +114,47 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['template'] = context.user_data['user_template']
         await query.message.reply_text("🖼 **Режим Демотиватора**\nВведите подпись:", parse_mode='Markdown')
         return WAITING_DEMOTIVATOR_TEXT
+
+    elif data == "user_select_effects":
+        if 'user_template' not in context.user_data:
+             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             return ConversationHandler.END
+        
+        keyboard = [
+            [InlineKeyboardButton("🫠 Жидкий (Liquid)", callback_data="effect_liquid")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")] # Опционально, но полезно
+        ]
+        await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    elif data == "effect_liquid":
+        if 'user_template' not in context.user_data:
+             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             return ConversationHandler.END
+        
+        template_path = context.user_data['user_template']
+        msg = await query.message.reply_text("🫠 Применяю эффект (это может занять время)...")
+        
+        try:
+            # Запускаем обработку
+            output_path = liquid_resize(template_path, scale=0.5)
+            
+            with open(output_path, 'rb') as f:
+                await query.message.reply_photo(f)
+            
+            await msg.delete()
+            os.remove(output_path)
+            
+            # Удаляем исходник после эффекта (как и в других режимах)
+            if os.path.exists(template_path):
+                 os.remove(template_path)
+            
+            return ConversationHandler.END
+            
+        except Exception as e:
+            logging.error(f"Effect error: {e}")
+            await msg.edit_text("❌ Ошибка при обработке изображения.")
+            return ConversationHandler.END
 
     # Обработка стандартной навигации
     try:
