@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+venv
+__pycache__
+assets/generated/*
+assets/user_uploads/*
+Dockerfile
+README.md
+WORKDONE.md
+HELLO.md

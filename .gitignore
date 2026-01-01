@@ -1,6 +1,38 @@
+# Environment variables
 .env
+
+# Python compilation
 __pycache__/
-*.log
-WORKDONE.md
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE settings
+.idea/
+.vscode/
+*.swp
 **/.DS_Store
 
+# Logs
+*.log
+
+# Project specific assets (Generated content)
+assets/generated/*
+!assets/generated/.gitkeep
+
+assets/user_uploads/*
+!assets/user_uploads/.gitkeep
+
+# Keep templates (Do not ignore templates!)
+# assets/templates/ is NOT ignored by default, which is good.
+
+# Docker
+# .dockerignore removed to allow tracking
+
+# Temporary files
+WORKDONE.md
+HELLO.md
