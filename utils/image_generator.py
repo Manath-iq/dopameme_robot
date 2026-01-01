@@ -4,7 +4,12 @@ import uuid
 
 # Попытка найти шрифты
 def get_font(size, font_name="Arial"):
-    # Mac paths (расширенный список для Mac)
+    # 1. Сначала ищем в папке проекта (для сервера)
+    local_font_path = f"assets/fonts/{font_name}.ttf"
+    if os.path.exists(local_font_path):
+        return ImageFont.truetype(local_font_path, size)
+
+    # 2. Mac paths (расширенный список для Mac)
     paths = [
         f"/System/Library/Fonts/Supplemental/{font_name}.ttf",
         f"/System/Library/Fonts/{font_name}.ttf",
