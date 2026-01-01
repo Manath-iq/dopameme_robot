@@ -4,42 +4,14 @@ import uuid
 
 # Попытка найти шрифты
 def get_font(size, font_name="Arial"):
-    # 1. Сначала ищем в папке проекта (для сервера)
-    local_font_path = f"assets/fonts/{font_name}.ttf"
+    # Always look in the project's assets/fonts directory first
+    local_font_path = os.path.join("assets", "fonts", f"{font_name}.ttf")
     if os.path.exists(local_font_path):
         return ImageFont.truetype(local_font_path, size)
-
-    # 2. Mac paths (расширенный список для Mac)
-    paths = [
-        f"/System/Library/Fonts/Supplemental/{font_name}.ttf",
-        f"/System/Library/Fonts/{font_name}.ttf",
-        f"/Library/Fonts/{font_name}.ttf",
-        # Попробуем конкретные имена, если generic не сработает
-        "/System/Library/Fonts/Supplemental/Impact.ttf", 
-        "/Library/Fonts/Impact.ttf",
-        "/System/Library/Fonts/Supplemental/Times New Roman.ttf"
-    ]
     
-    # Если запрашиваем Impact, ищем его прицельно
-    if font_name == "Impact":
-        impact_paths = [
-            "/Library/Fonts/Impact.ttf",
-            "/System/Library/Fonts/Supplemental/Impact.ttf"
-        ]
-        for p in impact_paths:
-            if os.path.exists(p):
-                 return ImageFont.truetype(p, size)
-
-    for p in paths:
-        if os.path.exists(p):
-            return ImageFont.truetype(p, size)
-    
-    # Если не нашли по путям, пробуем системный поиск PIL
-    try:
-        return ImageFont.truetype(f"{font_name}.ttf", size)
-    except:
-        print(f"Warning: Font {font_name} not found, using default.")
-        return ImageFont.load_default()
+    # Fallback to default if not found
+    print(f"Warning: Font {font_name}.ttf not found in assets/fonts/, using default.")
+    return ImageFont.load_default()
 
 def wrap_text(text, font, max_width, draw):
     lines = []
