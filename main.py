@@ -1,5 +1,6 @@
 import os
 import logging
+import uuid
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
@@ -20,10 +21,15 @@ logging.basicConfig(
 WAITING_MEME_TEXT = 1
 WAITING_DEMOTIVATOR_TEXT = 2
 
-# Список шаблонов
+# Директории
 TEMPLATE_DIR = "assets/templates"
+USER_UPLOAD_DIR = "assets/user_uploads"
+
+if not os.path.exists(USER_UPLOAD_DIR):
+    os.makedirs(USER_UPLOAD_DIR)
+
 def get_templates():
-    return sorted([f for f in os.listdir(TEMPLATE_DIR) if f.endswith(('.jpg', '.png'))])
+    return sorted([f for f in os.listdir(TEMPLATE_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
 
 # Клавиатура навигации
 def get_keyboard(current_index):
@@ -47,7 +53,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     welcome_text = (
         "Привет! Я бот для создания мемов и демотиваторов.\n\n"
-        "1. Выберите картинку стрелками.\n"
+        "1. Выберите картинку стрелками ИЛИ **пришлите свою картинку**.\n"
         "2. Нажмите ✅ для мема или 'Демотиватор' для демотиватора."
     )
     
@@ -58,30 +64,73 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=welcome_text,
             reply_markup=get_keyboard(0)
         )
-    return ConversationHandler.END # Мы не начинаем разговор, пока не нажмут кнопку выбора
+    return ConversationHandler.END
+
+async def handle_user_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo_file = await update.message.photo[-1].get_file()
+    
+    file_path = os.path.join(USER_UPLOAD_DIR, f"{uuid.uuid4()}.jpg")
+    await photo_file.download_to_drive(file_path)
+    
+    context.user_data['user_template'] = file_path
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Сделать Мем", callback_data="user_select_meme"),
+            InlineKeyboardButton("Демотиватор", callback_data="user_select_dem")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "Фото получено! Выберите режим:", 
+        reply_markup=reply_markup
+    )
+    return ConversationHandler.END
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer() # Обязательно отвечать, чтобы убрались часики
+    await query.answer()
     
     data = query.data
-    action, index = data.rsplit('_', 1)
-    index = int(index)
+    
+    # Обработка пользовательских кнопок
+    if data == "user_select_meme":
+        if 'user_template' not in context.user_data:
+            await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+            return ConversationHandler.END
+        context.user_data['template'] = context.user_data['user_template']
+        await query.message.reply_text("📝 **Режим Мема**\nВведите текст (Верх . Низ):", parse_mode='Markdown')
+        return WAITING_MEME_TEXT
+        
+    elif data == "user_select_dem":
+        if 'user_template' not in context.user_data:
+             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             return ConversationHandler.END
+        context.user_data['template'] = context.user_data['user_template']
+        await query.message.reply_text("🖼 **Режим Демотиватора**\nВведите подпись:", parse_mode='Markdown')
+        return WAITING_DEMOTIVATOR_TEXT
+
+    # Обработка стандартной навигации
+    try:
+        action, index = data.rsplit('_', 1)
+        index = int(index)
+    except ValueError:
+        return ConversationHandler.END
+    
     templates = get_templates()
     
     if action == "prev":
         new_index = (index - 1) % len(templates)
-        # InputMediaPhoto требует opened file или url или file_id. 
-        # Открываем каждый раз заново - безопасно.
         with open(os.path.join(TEMPLATE_DIR, templates[new_index]), 'rb') as f:
-             new_media = InputMediaPhoto(media=f, caption="Выберите шаблон:")
+             new_media = InputMediaPhoto(media=f, caption="Выберите шаблон или пришлите свой:")
              await query.edit_message_media(media=new_media, reply_markup=get_keyboard(new_index))
-        return ConversationHandler.END # Не начинаем стейт
+        return ConversationHandler.END
         
     elif action == "next":
         new_index = (index + 1) % len(templates)
         with open(os.path.join(TEMPLATE_DIR, templates[new_index]), 'rb') as f:
-             new_media = InputMediaPhoto(media=f, caption="Выберите шаблон:")
+             new_media = InputMediaPhoto(media=f, caption="Выберите шаблон или пришлите свой:")
              await query.edit_message_media(media=new_media, reply_markup=get_keyboard(new_index))
         return ConversationHandler.END
         
@@ -90,8 +139,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             "📝 **Режим Мема**\n\n"
             "Напишите текст в формате:\n"
-            "`Верхний текст . Нижний текст`\n\n"
-            "(Если нужен только верхний или только нижний, используйте точку соответственно, например `. Снизу` или `Сверху .`)",
+            "`Верхний текст . Нижний текст`",
             parse_mode='Markdown'
         )
         return WAITING_MEME_TEXT
@@ -109,8 +157,8 @@ async def generate_meme_handler(update: Update, context: ContextTypes.DEFAULT_TY
     text = update.message.text
     template_path = context.user_data.get('template')
     
-    if not template_path:
-        await update.message.reply_text("Что-то пошло не так. Пожалуйста, начните заново с /start")
+    if not template_path or not os.path.exists(template_path):
+        await update.message.reply_text("Ошибка: Шаблон не найден. Начните заново.")
         return ConversationHandler.END
         
     parts = text.split('.', 1)
@@ -124,7 +172,15 @@ async def generate_meme_handler(update: Update, context: ContextTypes.DEFAULT_TY
         with open(output_path, 'rb') as f:
             await update.message.reply_photo(f)
         await msg.delete()
-        os.remove(output_path) # Удаляем временный файл
+        os.remove(output_path) # Удаляем готовый мем
+        
+        # Если это было фото пользователя, удаляем исходник
+        if "user_uploads" in template_path:
+            try:
+                os.remove(template_path)
+            except Exception as e:
+                logging.error(f"Failed to remove user upload: {e}")
+                
     except Exception as e:
         logging.error(f"Error: {e}")
         await msg.edit_text("❌ Произошла ошибка при генерации.")
@@ -135,8 +191,8 @@ async def generate_demotivator_handler(update: Update, context: ContextTypes.DEF
     text = update.message.text
     template_path = context.user_data.get('template')
     
-    if not template_path:
-        await update.message.reply_text("Что-то пошло не так. Пожалуйста, начните заново с /start")
+    if not template_path or not os.path.exists(template_path):
+        await update.message.reply_text("Ошибка: Шаблон не найден. Начните заново.")
         return ConversationHandler.END
         
     msg = await update.message.reply_text("🎨 Рисую демотиватор...")
@@ -146,7 +202,15 @@ async def generate_demotivator_handler(update: Update, context: ContextTypes.DEF
         with open(output_path, 'rb') as f:
             await update.message.reply_photo(f)
         await msg.delete()
-        os.remove(output_path)
+        os.remove(output_path) # Удаляем готовый демотиватор
+        
+        # Если это было фото пользователя, удаляем исходник
+        if "user_uploads" in template_path:
+            try:
+                os.remove(template_path)
+            except Exception as e:
+                logging.error(f"Failed to remove user upload: {e}")
+                
     except Exception as e:
         logging.error(f"Error: {e}")
         await msg.edit_text("❌ Произошла ошибка при генерации.")
@@ -157,17 +221,34 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Отменено. Введите /start.")
     return ConversationHandler.END
 
+def cleanup_temp_files():
+    """Очистка временных файлов при запуске"""
+    dirs_to_clean = [USER_UPLOAD_DIR, "assets/generated"]
+    for d in dirs_to_clean:
+        if os.path.exists(d):
+            for f in os.listdir(d):
+                file_path = os.path.join(d, f)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    print(f"Error cleaning {file_path}: {e}")
+
 if __name__ == '__main__':
     if not TOKEN:
         print("Error: BOT_TOKEN not found in .env")
         exit(1)
+        
+    # Очистка мусора перед запуском
+    cleanup_temp_files()
 
     application = ApplicationBuilder().token(TOKEN).build()
     
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CallbackQueryHandler(button_handler)
+            CallbackQueryHandler(button_handler),
+            MessageHandler(filters.PHOTO, handle_user_photo)
         ],
         states={
             WAITING_MEME_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_meme_handler)],

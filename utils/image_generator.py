@@ -65,11 +65,28 @@ def generate_meme(template_path, top_text, bottom_text):
     draw = ImageDraw.Draw(img)
     width, height = img.size
     
-    font_size = int(width / 10)
-    font = get_font(font_size, "Impact")
+    # Helper to calculate font size based on text length
+    def get_dynamic_font(text):
+        if not text:
+            return get_font(int(width / 10), "Impact")
+            
+        length = len(text)
+        if length < 20:
+            size = int(width / 10)
+        elif length < 50:
+            size = int(width / 15)
+        else:
+            size = int(width / 22)
+            
+        # Minimum readable size
+        size = max(size, 20)
+        return get_font(size, "Impact")
     
     def draw_text_with_outline(text, y_pos, is_bottom=False):
         if not text: return
+        
+        # Get specific font for this text block
+        font = get_dynamic_font(text)
         
         lines = wrap_text(text, font, width - 20, draw)
         
