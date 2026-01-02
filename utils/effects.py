@@ -106,8 +106,8 @@ def remove_vertical_seam(img_arr, seam):
 
 def liquid_resize(image_path, scale=0.5):
     """
-    Apply liquid resize (seam carving) effect.
-    scale: Target width percentage (e.g. 0.5 = 50% of original width)
+    Apply liquid resize (seam carving) effect on BOTH axes.
+    scale: Target size percentage (e.g. 0.5 = 50% of original width AND height)
     """
     img = Image.open(image_path).convert("RGB")
     
@@ -115,21 +115,43 @@ def liquid_resize(image_path, scale=0.5):
     img = resize_image_keep_ratio(img, max_size=500)
     
     img_arr = np.array(img)
+    
+    # --- PHASE 1: Reduce Width ---
     h, w, _ = img_arr.shape
-    
     target_w = int(w * scale)
-    steps = w - target_w
+    steps_w = w - target_w
     
-    # Safety limit to avoid timeout
-    if steps > 200: 
-        steps = 200
+    # Safety limit
+    if steps_w > 200: steps_w = 200
         
-    print(f"Applying liquid resize: {w}x{h} -> removing {steps} seams...")
+    print(f"Liquid Resize Phase 1 (Width): removing {steps_w} seams...")
     
-    for _ in range(steps):
+    for _ in range(steps_w):
         energy = calc_energy(img_arr)
         seam = find_vertical_seam(energy)
         img_arr = remove_vertical_seam(img_arr, seam)
+        
+    # --- PHASE 2: Reduce Height ---
+    # Rotate image 90 degrees so we can use the same vertical seam logic
+    img_arr = np.rot90(img_arr, k=1, axes=(0, 1))
+    
+    h_curr, w_curr, _ = img_arr.shape # Note: dimensions swapped
+    # We want to reduce based on original height ratio
+    target_h = int(h * scale) 
+    steps_h = w_curr - target_h # We are reducing 'width' of rotated image
+    
+    # Safety limit
+    if steps_h > 200: steps_h = 200
+    
+    print(f"Liquid Resize Phase 2 (Height): removing {steps_h} seams...")
+    
+    for _ in range(steps_h):
+        energy = calc_energy(img_arr)
+        seam = find_vertical_seam(energy)
+        img_arr = remove_vertical_seam(img_arr, seam)
+
+    # Rotate back
+    img_arr = np.rot90(img_arr, k=-1, axes=(0, 1))
 
     result_img = Image.fromarray(np.uint8(img_arr))
     
