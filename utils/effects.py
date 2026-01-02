@@ -1,5 +1,5 @@
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageEnhance
 from scipy.ndimage import convolve
 import os
 import uuid
@@ -160,4 +160,43 @@ def liquid_resize(image_path, scale=0.5):
     
     output_path = f"assets/generated/{uuid.uuid4()}.jpg"
     result_img.save(output_path)
+    return output_path
+
+def deep_fry_effect(image_path):
+    """
+    Apply 'Deep Fried' effect: noise, extreme saturation/contrast, and jpeg artifacts.
+    """
+    img = Image.open(image_path).convert("RGB")
+    
+    # Resize slightly larger than liquid resize as this is faster
+    img = resize_image_keep_ratio(img, max_size=800)
+    
+    # 1. Add Noise
+    # Convert to numpy to add noise efficiently
+    img_arr = np.array(img)
+    noise = np.random.randint(0, 25, img_arr.shape, dtype='uint8') # Subtle noise
+    # Add noise and clip to valid range
+    img_arr = np.clip(img_arr.astype(int) + noise, 0, 255).astype('uint8')
+    img = Image.fromarray(img_arr)
+    
+    # 2. Enhance Saturation (Fried colors)
+    converter = ImageEnhance.Color(img)
+    img = converter.enhance(3.0) # 3x Saturation
+    
+    # 3. Enhance Contrast (Deep burn)
+    converter = ImageEnhance.Contrast(img)
+    img = converter.enhance(2.0) # 2x Contrast
+    
+    # 4. Enhance Sharpness (Crispy edges)
+    converter = ImageEnhance.Sharpness(img)
+    img = converter.enhance(5.0) # 5x Sharpness
+    
+    if not os.path.exists("assets/generated"):
+        os.makedirs("assets/generated")
+    
+    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    
+    # 5. Save with low quality for JPEG artifacts
+    img.save(output_path, "JPEG", quality=8)
+    
     return output_path
