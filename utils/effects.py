@@ -268,11 +268,35 @@ def warp_effect(image_path):
     # Numba magic
     result_arr = apply_swirl_numba(img_arr, radius, strength)
     
-    result_img = Image.fromarray(result_arr)
+    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    result_img.save(output_path)
+    return output_path
+
+def crispy_effect(image_path):
+    """
+    Apply 'Crispy' effect: extreme sharpness, high contrast, and increased brightness.
+    """
+    img = Image.open(image_path).convert("RGB")
     
+    # Resize for consistent speed
+    img = resize_image_keep_ratio(img, max_size=800)
+    
+    # 1. Enhance Sharpness (Extreme!)
+    converter = ImageEnhance.Sharpness(img)
+    img = converter.enhance(15.0) # Very high sharpness
+    
+    # 2. Enhance Contrast (Blow out blacks and whites)
+    converter = ImageEnhance.Contrast(img)
+    img = converter.enhance(3.0) # Very high contrast
+    
+    # 3. Enhance Brightness (Makes it more "blown out")
+    converter = ImageEnhance.Brightness(img)
+    img = converter.enhance(1.5) # A bit brighter
+
     if not os.path.exists("assets/generated"):
         os.makedirs("assets/generated")
     
     output_path = f"assets/generated/{uuid.uuid4()}.jpg"
-    result_img.save(output_path)
+    img.save(output_path) # No low JPEG quality here, as it's not deep fry
+    
     return output_path
