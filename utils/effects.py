@@ -268,6 +268,91 @@ def warp_effect(image_path):
     # Numba magic
     result_arr = apply_swirl_numba(img_arr, radius, strength)
     
+    result_img = Image.fromarray(result_arr)
+    
+    if not os.path.exists("assets/generated"):
+        os.makedirs("assets/generated")
+    
+    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    result_img.save(output_path)
+    return output_path
+
+@jit(nopython=True, fastmath=True)
+def apply_lens_numba(img_arr, k):
+    """
+    Apply radial lens distortion (Barrel/Bulge or Pincushion/Pinch).
+    k < 0: Bulge (Fisheye)
+    k > 0: Pinch (Hole)
+    """
+    h, w, c = img_arr.shape
+    cx, cy = w / 2, h / 2
+    output = np.zeros_like(img_arr)
+    
+    # Normalize radius by the smaller dimension to keep the effect circular
+    radius_norm = min(w, h) / 2
+
+    for y in range(h):
+        for x in range(w):
+            dx = x - cx
+            dy = y - cy
+            dist_sq = dx*dx + dy*dy
+            dist = np.sqrt(dist_sq)
+            
+            # Normalize distance
+            r = dist / radius_norm
+            
+            # Calculate distortion factor: r_src = r * (1 + k * r^2)
+            # Coordinate mapping: src = center + delta * (1 + k * r^2)
+            factor = 1.0 + k * (r * r)
+            
+            src_x = cx + dx * factor
+            src_y = cy + dy * factor
+
+            sx = int(round(src_x))
+            sy = int(round(src_y))
+
+            if 0 <= sx < w and 0 <= sy < h:
+                output[y, x, 0] = img_arr[sy, sx, 0]
+                output[y, x, 1] = img_arr[sy, sx, 1]
+                output[y, x, 2] = img_arr[sy, sx, 2]
+            else:
+                # Black background for out of bounds
+                output[y, x, 0] = 0
+                output[y, x, 1] = 0
+                output[y, x, 2] = 0
+
+    return output
+
+def lens_bulge_effect(image_path):
+    """
+    Apply Fisheye/Bulge effect (towards the viewer).
+    """
+    img = Image.open(image_path).convert("RGB")
+    img = resize_image_keep_ratio(img, max_size=600)
+    img_arr = np.array(img)
+    
+    # k < 0 expands the center
+    result_arr = apply_lens_numba(img_arr, k=-0.5)
+    
+    result_img = Image.fromarray(result_arr)
+    if not os.path.exists("assets/generated"): os.makedirs("assets/generated")
+    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    result_img.save(output_path)
+    return output_path
+
+def lens_pinch_effect(image_path):
+    """
+    Apply Pinch/Hole effect (away from the viewer).
+    """
+    img = Image.open(image_path).convert("RGB")
+    img = resize_image_keep_ratio(img, max_size=600)
+    img_arr = np.array(img)
+    
+    # k > 0 shrinks the center (tunnel)
+    result_arr = apply_lens_numba(img_arr, k=0.5)
+    
+    result_img = Image.fromarray(result_arr)
+    if not os.path.exists("assets/generated"): os.makedirs("assets/generated")
     output_path = f"assets/generated/{uuid.uuid4()}.jpg"
     result_img.save(output_path)
     return output_path

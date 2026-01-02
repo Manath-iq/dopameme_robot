@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMe
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 
 from utils.image_generator import generate_meme, generate_demotivator
-from utils.effects import liquid_resize, deep_fry_effect, warp_effect, crispy_effect
+from utils.effects import liquid_resize, deep_fry_effect, warp_effect, crispy_effect, lens_bulge_effect, lens_pinch_effect
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -127,6 +127,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🍟 Прожарка (Deep Fried)", callback_data="effect_deepfry")],
             [InlineKeyboardButton("🌀 Вихрь (Swirl)", callback_data="effect_warp")],
             [InlineKeyboardButton("👁️‍🗨️ Криспи (Crispy)", callback_data="effect_crispy")],
+            [InlineKeyboardButton("👀 Рыбий глаз (Bulge)", callback_data="effect_bulge")],
+            [InlineKeyboardButton("🕳️ Дырка (Pinch)", callback_data="effect_pinch")],
             [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]
         ]
         # Редактируем, чтобы показать подменю
@@ -227,6 +229,52 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         try:
             output_path = crispy_effect(template_path)
+            with open(output_path, 'rb') as f:
+                await query.message.reply_photo(f)
+            await msg.delete()
+            os.remove(output_path)
+            if os.path.exists(template_path): os.remove(template_path)
+            return ConversationHandler.END
+        except Exception as e:
+            logging.error(f"Effect error: {e}")
+            await msg.edit_text("❌ Ошибка при обработке изображения.")
+            return ConversationHandler.END
+
+    elif data == "effect_bulge":
+        if 'user_template' not in context.user_data:
+             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
+             return ConversationHandler.END
+        
+        template_path = context.user_data['user_template']
+        # Меню превращается в статус
+        await query.message.edit_text("👀 Надуваю (Bulge)...", reply_markup=None)
+        msg = query.message
+        
+        try:
+            output_path = lens_bulge_effect(template_path)
+            with open(output_path, 'rb') as f:
+                await query.message.reply_photo(f)
+            await msg.delete()
+            os.remove(output_path)
+            if os.path.exists(template_path): os.remove(template_path)
+            return ConversationHandler.END
+        except Exception as e:
+            logging.error(f"Effect error: {e}")
+            await msg.edit_text("❌ Ошибка при обработке изображения.")
+            return ConversationHandler.END
+
+    elif data == "effect_pinch":
+        if 'user_template' not in context.user_data:
+             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
+             return ConversationHandler.END
+        
+        template_path = context.user_data['user_template']
+        # Меню превращается в статус
+        await query.message.edit_text("🕳️ Всасываю (Pinch)...", reply_markup=None)
+        msg = query.message
+        
+        try:
+            output_path = lens_pinch_effect(template_path)
             with open(output_path, 'rb') as f:
                 await query.message.reply_photo(f)
             await msg.delete()
