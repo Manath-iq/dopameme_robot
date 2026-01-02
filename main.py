@@ -101,58 +101,68 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обработка пользовательских кнопок
     if data == "user_select_meme":
         if 'user_template' not in context.user_data:
-            await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+            await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
             return ConversationHandler.END
         context.user_data['template'] = context.user_data['user_template']
-        await query.message.reply_text("📝 **Режим Мема**\nВведите текст (Верх . Низ):", parse_mode='Markdown')
+        # Редактируем сообщение с меню, превращая его в инструкцию
+        await query.message.edit_text("📝 **Режим Мема**\nВведите текст (Верх . Низ):", parse_mode='Markdown')
         return WAITING_MEME_TEXT
         
     elif data == "user_select_dem":
         if 'user_template' not in context.user_data:
-             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
              return ConversationHandler.END
         context.user_data['template'] = context.user_data['user_template']
-        await query.message.reply_text("🖼 **Режим Демотиватора**\nВведите подпись:", parse_mode='Markdown')
+        # Редактируем сообщение с меню
+        await query.message.edit_text("🖼 **Режим Демотиватора**\nВведите подпись:", parse_mode='Markdown')
         return WAITING_DEMOTIVATOR_TEXT
 
     elif data == "user_select_effects":
         if 'user_template' not in context.user_data:
-             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
              return ConversationHandler.END
         
         keyboard = [
             [InlineKeyboardButton("🫠 Жидкий (Liquid)", callback_data="effect_liquid")],
             [InlineKeyboardButton("🍟 Прожарка (Deep Fried)", callback_data="effect_deepfry")],
             [InlineKeyboardButton("🌀 Вихрь (Swirl)", callback_data="effect_warp")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")] # Опционально, но полезно
+            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]
         ]
-        await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+        # Редактируем, чтобы показать подменю
+        await query.message.edit_text("✨ Выберите эффект:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    elif data == "back_to_main":
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Сделать Мем", callback_data="user_select_meme"),
+                InlineKeyboardButton("Демотиватор", callback_data="user_select_dem")
+            ],
+            [
+                InlineKeyboardButton("✨ Эффекты", callback_data="user_select_effects")
+            ]
+        ]
+        await query.message.edit_text("Фото получено! Выберите режим:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     elif data == "effect_liquid":
         if 'user_template' not in context.user_data:
-             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
              return ConversationHandler.END
         
         template_path = context.user_data['user_template']
-        msg = await query.message.reply_text("🫠 Применяю эффект (это может занять время)...")
+        # Меню превращается в статус "Обработка"
+        await query.message.edit_text("🫠 Применяю эффект (это может занять время)...", reply_markup=None)
+        msg = query.message # Используем это сообщение для удаления
         
         try:
-            # Запускаем обработку
             output_path = liquid_resize(template_path, scale=0.5)
-            
             with open(output_path, 'rb') as f:
                 await query.message.reply_photo(f)
-            
-            await msg.delete()
+            await msg.delete() # Удаляем сообщение "Обработка" (бывшее меню)
             os.remove(output_path)
-            
-            # Удаляем исходник после эффекта (как и в других режимах)
-            if os.path.exists(template_path):
-                 os.remove(template_path)
-            
+            if os.path.exists(template_path): os.remove(template_path)
             return ConversationHandler.END
-            
         except Exception as e:
             logging.error(f"Effect error: {e}")
             await msg.edit_text("❌ Ошибка при обработке изображения.")
@@ -160,28 +170,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "effect_deepfry":
         if 'user_template' not in context.user_data:
-             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
              return ConversationHandler.END
         
         template_path = context.user_data['user_template']
-        msg = await query.message.reply_text("🍟 Жарю в масле...")
+        # Меню превращается в статус
+        await query.message.edit_text("🍟 Жарю в масле...", reply_markup=None)
+        msg = query.message 
         
         try:
-            # Запускаем обработку
             output_path = deep_fry_effect(template_path)
-            
             with open(output_path, 'rb') as f:
                 await query.message.reply_photo(f)
-            
             await msg.delete()
             os.remove(output_path)
-            
-            # Удаляем исходник после эффекта
-            if os.path.exists(template_path):
-                 os.remove(template_path)
-            
+            if os.path.exists(template_path): os.remove(template_path)
             return ConversationHandler.END
-            
         except Exception as e:
             logging.error(f"Effect error: {e}")
             await msg.edit_text("❌ Ошибка при обработке изображения.")
@@ -189,28 +193,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "effect_warp":
         if 'user_template' not in context.user_data:
-             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
              return ConversationHandler.END
         
         template_path = context.user_data['user_template']
-        msg = await query.message.reply_text("🌀 Закручиваю...")
+        # Меню превращается в статус
+        await query.message.edit_text("🌀 Закручиваю...", reply_markup=None)
+        msg = query.message
         
         try:
-            # Запускаем обработку
             output_path = warp_effect(template_path)
-            
             with open(output_path, 'rb') as f:
                 await query.message.reply_photo(f)
-            
             await msg.delete()
             os.remove(output_path)
-            
-            # Удаляем исходник
-            if os.path.exists(template_path):
-                 os.remove(template_path)
-            
+            if os.path.exists(template_path): os.remove(template_path)
             return ConversationHandler.END
-            
         except Exception as e:
             logging.error(f"Effect error: {e}")
             await msg.edit_text("❌ Ошибка при обработке изображения.")
@@ -241,6 +239,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif action == "select_meme":
         context.user_data['template'] = os.path.join(TEMPLATE_DIR, templates[index])
+        # Убираем кнопки у шаблона
+        await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
             "📝 **Режим Мема**\n\n"
             "Напишите текст в формате:\n"
@@ -251,6 +251,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif action == "select_dem":
         context.user_data['template'] = os.path.join(TEMPLATE_DIR, templates[index])
+        # Убираем кнопки у шаблона
+        await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
             "🖼 **Режим Демотиватора**\n\n"
             "Напишите подпись для демотиватора:",
