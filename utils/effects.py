@@ -200,3 +200,79 @@ def deep_fry_effect(image_path):
     img.save(output_path, "JPEG", quality=8)
     
     return output_path
+
+@jit(nopython=True, fastmath=True)
+def apply_swirl_numba(img_arr, radius, strength):
+    """
+    Apply a swirl distortion to the image center using Numba.
+    """
+    h, w, c = img_arr.shape
+    cx, cy = w / 2, h / 2
+    output = np.zeros_like(img_arr)
+
+    for y in range(h):
+        for x in range(w):
+            dx = x - cx
+            dy = y - cy
+            distance = np.sqrt(dx*dx + dy*dy)
+
+            if distance < radius:
+                # Calculate angle
+                angle = np.arctan2(dy, dx)
+                # Add distortion (more rotation closer to center)
+                distortion = strength * (1.0 - distance / radius)
+                
+                # Calculate source coordinates
+                src_x = cx + distance * np.cos(angle + distortion)
+                src_y = cy + distance * np.sin(angle + distortion)
+
+                # Nearest neighbor interpolation
+                sx = int(round(src_x))
+                sy = int(round(src_y))
+
+                # Boundary checks
+                if 0 <= sx < w and 0 <= sy < h:
+                    output[y, x, 0] = img_arr[sy, sx, 0]
+                    output[y, x, 1] = img_arr[sy, sx, 1]
+                    output[y, x, 2] = img_arr[sy, sx, 2]
+                else:
+                    output[y, x, 0] = img_arr[y, x, 0]
+                    output[y, x, 1] = img_arr[y, x, 1]
+                    output[y, x, 2] = img_arr[y, x, 2]
+            else:
+                # Outside radius, keep original
+                output[y, x, 0] = img_arr[y, x, 0]
+                output[y, x, 1] = img_arr[y, x, 1]
+                output[y, x, 2] = img_arr[y, x, 2]
+                
+    return output
+
+def warp_effect(image_path):
+    """
+    Apply a 'Swirl' warp effect to the center of the image.
+    """
+    img = Image.open(image_path).convert("RGB")
+    
+    # Resize for consistent speed
+    img = resize_image_keep_ratio(img, max_size=600)
+    img_arr = np.array(img)
+    
+    h, w, _ = img_arr.shape
+    
+    # Radius covers most of the image, Strength is how many radians to twist
+    radius = min(h, w) * 0.9 / 2
+    strength = 5.0 # Pretty strong swirl
+    
+    print(f"Applying Swirl Warp: {w}x{h}...")
+    
+    # Numba magic
+    result_arr = apply_swirl_numba(img_arr, radius, strength)
+    
+    result_img = Image.fromarray(result_arr)
+    
+    if not os.path.exists("assets/generated"):
+        os.makedirs("assets/generated")
+    
+    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    result_img.save(output_path)
+    return output_path

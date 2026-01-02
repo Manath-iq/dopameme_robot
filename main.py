@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMe
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 
 from utils.image_generator import generate_meme, generate_demotivator
-from utils.effects import liquid_resize, deep_fry_effect
+from utils.effects import liquid_resize, deep_fry_effect, warp_effect
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -123,6 +123,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("🫠 Жидкий (Liquid)", callback_data="effect_liquid")],
             [InlineKeyboardButton("🍟 Прожарка (Deep Fried)", callback_data="effect_deepfry")],
+            [InlineKeyboardButton("🌀 Вихрь (Swirl)", callback_data="effect_warp")],
             [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")] # Опционально, но полезно
         ]
         await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
@@ -176,6 +177,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(output_path)
             
             # Удаляем исходник после эффекта
+            if os.path.exists(template_path):
+                 os.remove(template_path)
+            
+            return ConversationHandler.END
+            
+        except Exception as e:
+            logging.error(f"Effect error: {e}")
+            await msg.edit_text("❌ Ошибка при обработке изображения.")
+            return ConversationHandler.END
+
+    elif data == "effect_warp":
+        if 'user_template' not in context.user_data:
+             await query.message.reply_text("Ошибка: фото потеряно. Пришлите снова.")
+             return ConversationHandler.END
+        
+        template_path = context.user_data['user_template']
+        msg = await query.message.reply_text("🌀 Закручиваю...")
+        
+        try:
+            # Запускаем обработку
+            output_path = warp_effect(template_path)
+            
+            with open(output_path, 'rb') as f:
+                await query.message.reply_photo(f)
+            
+            await msg.delete()
+            os.remove(output_path)
+            
+            # Удаляем исходник
             if os.path.exists(template_path):
                  os.remove(template_path)
             
