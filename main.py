@@ -494,6 +494,7 @@ if __name__ == '__main__':
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, start),
             CallbackQueryHandler(button_handler),
             MessageHandler(filters.PHOTO, handle_user_photo)
         ],

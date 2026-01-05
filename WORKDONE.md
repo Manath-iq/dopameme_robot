@@ -19,6 +19,8 @@
     - Ensured that user-uploaded photos can also be used for sticker creation within the sticker pack flow.
 - **Robustness:** Added a check to prevent finishing an empty sticker pack.
 
+- **UX Tweak:** Configured the bot to show the Welcome Menu on *any* text message, not just `/start`.
+
 ## 🐛 Critical Bug Fixes & UX Polish
 - **Telegram API Compatibility:** Resolved a critical `InputSticker` initialization error (`InputSticker.__init__() got an unexpected keyword argument 'format'`) by updating the syntax to `InputSticker(file, emoji_list=[...])` for `python-telegram-bot` v20+.
 - **Gallery Navigation Reliability:** Fixed a "Silent Fail" issue where clicking menu buttons would delete the message but fail to send the subsequent gallery. This was addressed by:
