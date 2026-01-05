@@ -32,6 +32,7 @@
 - Implemented auto-cleanup of temporary files on startup and after processing.
 
 ## 🐛 Bug Fixes & UX Polish
+- **CRITICAL FIX:** Solved "Silent Fail" issue in gallery navigation by decoupling file operations and using robust `send_photo` method.
 - **Fixed "Create Meme" button:** Now correctly transitions from text menu to media gallery.
 - **Enhanced Sticker Pack Flow:**
   - Removed technical pack IDs from user interface.

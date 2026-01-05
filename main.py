@@ -88,42 +88,52 @@ def get_sticker_final_keyboard(url):
 async def show_gallery(update: Update, context: ContextTypes.DEFAULT_TYPE, edit=False):
     """Показывает галерею шаблонов"""
     templates = get_templates()
+    chat_id = update.effective_chat.id
+    
     if not templates:
         text = "Шаблоны не найдены! Добавьте .jpg файлы в assets/templates"
-        if update.callback_query:
-            await update.callback_query.message.reply_text(text)
+        if edit and update.callback_query:
+            await update.callback_query.message.edit_text(text)
         else:
-            await update.message.reply_text(text)
+            await context.bot.send_message(chat_id=chat_id, text=text)
         return ConversationHandler.END
 
     current_index = context.user_data.get('gallery_index', 0)
+    # Защита от выхода за границы индекса
+    if current_index >= len(templates) or current_index < 0:
+        current_index = 0
+        context.user_data['gallery_index'] = 0
+        
     template_path = os.path.join(TEMPLATE_DIR, templates[current_index])
     sticker_mode = context.user_data.get('sticker_mode', False)
     
-    # Текст меняется в зависимости от режима, чтобы юзер понимал контекст
+    # Простой текст без Markdown во избежание ошибок парсинга
     if sticker_mode:
-        caption = "🎨 **Создание стикерпака**\nВыберите шаблон для следующего стикера или отправьте своё фото:"
+        caption = "🎨 Создание стикерпака\nВыберите шаблон или отправьте своё фото:"
     else:
         caption = "Выберите шаблон для мема или отправьте своё фото:"
 
+    keyboard = get_gallery_keyboard(current_index, sticker_mode)
+
     try:
-        with open(template_path, 'rb') as f:
-            media = InputMediaPhoto(media=f, caption=caption, parse_mode='Markdown')
-            keyboard = get_gallery_keyboard(current_index, sticker_mode)
-            
-            if edit and update.callback_query:
-                # Если редактируем существующее медиа
+        if edit and update.callback_query:
+            # Редактируем старое сообщение
+            with open(template_path, 'rb') as f:
+                media = InputMediaPhoto(media=f, caption=caption)
                 await update.callback_query.edit_message_media(media=media, reply_markup=keyboard)
-            else:
-                # Если присылаем новое (например, после текстового меню)
-                if update.callback_query:
-                    await update.callback_query.message.reply_photo(photo=f, caption=caption, reply_markup=keyboard, parse_mode='Markdown')
-                else:
-                    await update.message.reply_photo(photo=f, caption=caption, reply_markup=keyboard, parse_mode='Markdown')
+        else:
+            # Отправляем новое сообщение
+            with open(template_path, 'rb') as f:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=f,
+                    caption=caption,
+                    reply_markup=keyboard
+                )
     except Exception as e:
         logging.error(f"Gallery error: {e}")
-        # Если файл битый или удален, пробуем сбросить индекс
-        context.user_data['gallery_index'] = 0
+        # Сообщаем пользователю об ошибке
+        await context.bot.send_message(chat_id=chat_id, text="❌ Ошибка при загрузке изображения.")
 
 # --- ХЕНДЛЕРЫ КОМАНД ---
 
