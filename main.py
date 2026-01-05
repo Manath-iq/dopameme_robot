@@ -13,6 +13,9 @@ from utils.effects import liquid_resize, deep_fry_effect, warp_effect, crispy_ef
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 
+# КОНФИГУРАЦИЯ КАНАЛА
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@dopamemechan") # Имя канала для проверки подписки
+
 # Логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -32,6 +35,25 @@ if not os.path.exists(USER_UPLOAD_DIR):
 
 def get_templates():
     return sorted([f for f in os.listdir(TEMPLATE_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+
+async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Проверяет, подписан ли пользователь на указанный канал."""
+    try:
+        member = await context.bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        # Статусы, указывающие на то, что пользователь является участником канала
+        if member.status in ['member', 'administrator', 'creator']:
+            return True
+        else:
+            return False
+    except Exception as e:
+        logging.error(f"Ошибка при проверке подписки для {user_id} на {CHANNEL_USERNAME}: {e}")
+        # Если бот не является админом или канал недоступен, считаем, что проверка не удалась
+        # В таком случае лучше разрешить пользоваться ботом, чтобы не блокировать функционал
+        # Или можно вернуть False, чтобы требовать подписку, если бот ожидает быть админом.
+        # Для этой задачи: если ошибка, будем считать, что не подписан, чтобы побудить подписаться
+        return False
 
 # --- КЛАВИАТУРЫ ---
 
@@ -84,7 +106,6 @@ async def process_photo_setup(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     context.user_data['user_template'] = file_path
     
-    # Проверяем режим стикеров
     sticker_mode = context.user_data.get('sticker_mode', False)
     text = "Фото получено! Что делаем?"
     if sticker_mode:
@@ -143,18 +164,30 @@ async def show_gallery(update: Update, context: ContextTypes.DEFAULT_TYPE, edit=
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Стартовое меню ИЛИ обработка реплая на фото.
+    Стартовое меню, обработка реплая на фото, и проверка подписки на канал.
     """
     message = update.message
-    
+    user_id = update.effective_user.id
+
+    # Проверка подписки на канал
+    if not await check_subscription(user_id, context):
+        keyboard = InlineKeyboardMarkup([[ 
+            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")
+        ]])
+        await update.effective_message.reply_text(
+            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_USERNAME}",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END # Завершаем диалог, пока пользователь не подпишется
+
     # СЦЕНАРИЙ 1: Пользователь ответил тегом бота на чье-то фото
     if message.reply_to_message and message.reply_to_message.photo:
-        # Берем фото из оригинального сообщения (самое большое качество)
         photo = message.reply_to_message.photo[-1]
         await process_photo_setup(update, context, photo)
         return ConversationHandler.END
 
-    # СЦЕНАРИЙ 2: Обычный запуск (Галерея)
+    # СЦЕНАРИЙ 2: Обычный запуск (Галерея или Главное меню)
     context.user_data.clear() 
     
     keyboard = [
@@ -171,6 +204,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_user_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка прямой отправки фото (с подписью или в личке)"""
+    user_id = update.effective_user.id
+    # Проверка подписки на канал
+    if not await check_subscription(user_id, context):
+        keyboard = InlineKeyboardMarkup([[ 
+            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")
+        ]])
+        await update.effective_message.reply_text(
+            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_USERNAME}",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END
+
     photo = update.message.photo[-1]
     await process_photo_setup(update, context, photo)
     return ConversationHandler.END
@@ -182,6 +228,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+
+    user_id = update.effective_user.id
+    # Проверка подписки на канал (для кнопок)
+    if not await check_subscription(user_id, context):
+        keyboard = InlineKeyboardMarkup([[ 
+            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")
+        ]])
+        await update.effective_message.reply_text(
+            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_USERNAME}",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END
 
     # 1. МЕНЮ
     if data == "mode_meme":
@@ -390,6 +449,9 @@ if __name__ == '__main__':
     if not TOKEN:
         print("Error: BOT_TOKEN not found in .env")
         exit(1)
+    if not CHANNEL_USERNAME:
+        print("Error: CHANNEL_USERNAME not found in .env or hardcoded. Set CHANNEL_USERNAME for subscription check.")
+        exit(1)
     cleanup_temp_files()
     import threading
     from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -410,7 +472,6 @@ if __name__ == '__main__':
     # start_filter ловит:
     # 1. Личку: текст без команд
     # 2. Группы: текст с упоминанием (@bot)
-    # 3. ВСЕ ЧАТЫ: Реплай на сообщение (чтобы поймать реплай на фото с тегом)
     start_filter = (
         (filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND) | 
         ((filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP) & filters.TEXT & filters.Mention)
