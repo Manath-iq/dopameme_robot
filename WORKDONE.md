@@ -21,7 +21,7 @@
 
 - **UX Tweak:** Configured the bot to show the Welcome Menu on *any* text message, not just `/start`.
 
-- **Visual Branding:** Added an automatic, semi-transparent watermark (`@dopamemerobot`) to the bottom-right corner of all generated memes and demotivators.
+- **Visual Branding:** Added an automatic watermark (`@dopamemerobot`) to the **bottom-left** corner using the **Impact** font. Increased opacity to 60% and added a black outline for better visibility on any background.
 
 ## 🐛 Critical Bug Fixes & UX Polish
 - **Telegram API Compatibility:** Resolved a critical `InputSticker` initialization error (`InputSticker.__init__() got an unexpected keyword argument 'format'`) by updating the syntax to `InputSticker(file, emoji_list=[...])` for `python-telegram-bot` v20+.

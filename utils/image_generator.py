@@ -38,7 +38,7 @@ def wrap_text(text, font, max_width, draw):
     return lines
 
 def add_watermark(img):
-    """Adds a semi-transparent watermark @dopamemerobot to the bottom-right."""
+    """Adds a semi-transparent watermark @dopamemerobot to the bottom-left."""
     try:
         # Create a drawing context for the watermark
         # Use RGBA for transparency
@@ -49,9 +49,9 @@ def add_watermark(img):
         txt = Image.new('RGBA', img.size, (255,255,255,0))
         d = ImageDraw.Draw(txt)
         
-        # Calculate size proportional to image
-        font_size = max(12, int(min(width, height) * 0.03)) # ~3% of size
-        font = get_font(font_size, "Arial") # Use simple Arial or whatever available
+        # Calculate size proportional to image (Increased to 5%)
+        font_size = max(20, int(min(width, height) * 0.05)) 
+        font = get_font(font_size, "Impact") # Meme font
         
         text = "@dopamemerobot"
         
@@ -60,13 +60,22 @@ def add_watermark(img):
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
         
-        # Position: bottom right with margin
-        margin = max(5, int(font_size / 2))
-        x = width - text_w - margin
-        y = height - text_h - margin * 1.5 # little more space at bottom
+        # Position: bottom left with margin
+        margin = max(10, int(font_size / 2))
+        x = margin # Left side
+        y = height - text_h - margin * 1.5 
         
-        # Draw text: white with alpha=100 (approx 40% opacity)
-        d.text((x, y), text, font=font, fill=(255, 255, 255, 100))
+        # Draw text: white with alpha=153 (~60% opacity)
+        d.text((x, y), text, font=font, fill=(255, 255, 255, 153))
+        
+        # Outline for better visibility (black with same opacity)
+        outline_width = 2
+        for dx in range(-outline_width, outline_width+1):
+            for dy in range(-outline_width, outline_width+1):
+                if dx == 0 and dy == 0: continue
+                d.text((x+dx, y+dy), text, font=font, fill=(0, 0, 0, 153))
+        
+        d.text((x, y), text, font=font, fill=(255, 255, 255, 153))
         
         # Composite
         out = Image.alpha_composite(img, txt)
