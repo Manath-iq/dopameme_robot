@@ -2,6 +2,7 @@ import os
 import logging
 import uuid
 import asyncio
+import random
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputSticker
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
@@ -217,6 +218,13 @@ async def handle_user_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
     query = update.callback_query
+    templates = get_templates()
+    # Set random starting index if templates exist
+    if templates:
+        context.user_data['gallery_index'] = random.randint(0, len(templates) - 1)
+    else:
+        context.user_data['gallery_index'] = 0
+
     if data == config.CALLBACK_MODE_MEME:
         context.user_data['sticker_mode'] = False
         await query.message.delete()
@@ -236,6 +244,9 @@ async def _handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_T
 async def _handle_sticker_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
     query = update.callback_query
     if data == config.CALLBACK_STICKER_CONTINUE:
+        templates = get_templates()
+        if templates:
+            context.user_data['gallery_index'] = random.randint(0, len(templates) - 1)
         await query.message.delete()
         await show_gallery(update, context, edit=False)
         return # Do not end conversation, user continues adding stickers
