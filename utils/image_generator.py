@@ -37,6 +37,45 @@ def wrap_text(text, font, max_width, draw):
         lines.append(" ".join(current_line))
     return lines
 
+def add_watermark(img):
+    """Adds a semi-transparent watermark @dopamemerobot to the bottom-right."""
+    try:
+        # Create a drawing context for the watermark
+        # Use RGBA for transparency
+        if img.mode != 'RGBA':
+            img = img.convert("RGBA")
+            
+        width, height = img.size
+        txt = Image.new('RGBA', img.size, (255,255,255,0))
+        d = ImageDraw.Draw(txt)
+        
+        # Calculate size proportional to image
+        font_size = max(12, int(min(width, height) * 0.03)) # ~3% of size
+        font = get_font(font_size, "Arial") # Use simple Arial or whatever available
+        
+        text = "@dopamemerobot"
+        
+        # Get text size
+        bbox = d.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        
+        # Position: bottom right with margin
+        margin = max(5, int(font_size / 2))
+        x = width - text_w - margin
+        y = height - text_h - margin * 1.5 # little more space at bottom
+        
+        # Draw text: white with alpha=100 (approx 40% opacity)
+        d.text((x, y), text, font=font, fill=(255, 255, 255, 100))
+        
+        # Composite
+        out = Image.alpha_composite(img, txt)
+        return out.convert("RGB") # Return RGB for saving as JPG
+        
+    except Exception as e:
+        print(f"Watermark failed: {e}")
+        return img.convert("RGB")
+
 def generate_meme(template_path, top_text, bottom_text):
     img = Image.open(template_path).convert("RGB")
     draw = ImageDraw.Draw(img)
@@ -96,6 +135,9 @@ def generate_meme(template_path, top_text, bottom_text):
     draw_text_with_outline(top_text.upper(), 10)
     draw_text_with_outline(bottom_text.upper(), 0, is_bottom=True)
     
+    # Add Watermark
+    img = add_watermark(img)
+    
     if not os.path.exists("assets/generated"):
         os.makedirs("assets/generated")
         
@@ -145,6 +187,9 @@ def generate_demotivator(template_path, text):
         x = (canvas_w - w) / 2
         draw.text((x, current_y), line, font=font, fill="white")
         current_y += font_size + 15
+    
+    # Add Watermark
+    canvas = add_watermark(canvas)
         
     if not os.path.exists("assets/generated"):
         os.makedirs("assets/generated")

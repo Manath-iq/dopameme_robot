@@ -21,6 +21,8 @@
 
 - **UX Tweak:** Configured the bot to show the Welcome Menu on *any* text message, not just `/start`.
 
+- **Visual Branding:** Added an automatic, semi-transparent watermark (`@dopamemerobot`) to the bottom-right corner of all generated memes and demotivators.
+
 ## 🐛 Critical Bug Fixes & UX Polish
 - **Telegram API Compatibility:** Resolved a critical `InputSticker` initialization error (`InputSticker.__init__() got an unexpected keyword argument 'format'`) by updating the syntax to `InputSticker(file, emoji_list=[...])` for `python-telegram-bot` v20+.
 - **Gallery Navigation Reliability:** Fixed a "Silent Fail" issue where clicking menu buttons would delete the message but fail to send the subsequent gallery. This was addressed by:
