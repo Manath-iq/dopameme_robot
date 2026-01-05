@@ -1,42 +1,35 @@
-# 🚀 DopaMeme Bot - Development Log
+# 🚀 DopaMeme Bot - Development Log (05.01.2026)
 
-## ✅ Initial Setup & Core Features
-- Initialized Telegram Bot structure using `python-telegram-bot`.
-- Integrated basic image processing with `Pillow`.
-- Implemented core meme generation logic (Top/Bottom text).
-- Added Demotivator mode with classic black borders and Times New Roman font.
+## ✅ Initial Codebase Understanding
+- Performed a comprehensive review of the existing bot architecture, including `main.py`, `requirements.txt`, `utils/image_generator.py`, `utils/effects.py`, `Dockerfile`, and `.gitignore`.
+- Understood core functionalities: meme generation, demotivator creation, and image effects (Liquid Resize, Deep Fry, Warp, Crispy, Bulge, Pinch).
 
-## 🎨 Visual Effects Engine
-- Implemented **Liquid Resize (Seam Carving)** algorithm from scratch using `numpy` and `scipy`.
-- Added **Deep Fry** effect (noise, saturation, contrast).
-- Added **Warp/Swirl** distortion using `numba` for performance.
-- Added **Crispy**, **Bulge**, and **Pinch** lens effects.
-- Optimized image processing pipeline for free-tier hosting (Render.com friendly).
+## 📦 Major Feature: Sticker Pack Creation
+- **Architecture Refactoring:** Rewrote `main.py` to introduce a new main menu and manage conversation states for sticker pack creation.
+- **`utils/image_generator.py` Update:** Added `prepare_for_sticker` function to convert images to Telegram-compatible sticker format (PNG, 512px on one side).
+- **Optimized Resource Usage:** Implemented a "Stream Mode" for sticker pack generation:
+    - Each generated sticker is immediately uploaded to Telegram and linked to the pack.
+    - Local temporary files are deleted right after upload, minimizing disk space usage (crucial for free-tier deployments like Render).
+- **Enhanced User Experience (UX):**
+    - New clear main menu: "Создать Мем" or "Создать Стикерпак".
+    - Upon selecting "Создать Стикерпак", the bot immediately presents the template gallery for sticker selection.
+    - Simplified bot messages, removing technical IDs and complex descriptions for a more user-friendly interaction.
+    - Added an intermediate menu after each sticker is added, offering "Добавить ещё" or "Завершить пак".
+    - The final "Завершить пак" step now provides a clear message and a clickable button "📥 Сохранить стикерпак" with the direct Telegram link.
+    - Ensured that user-uploaded photos can also be used for sticker creation within the sticker pack flow.
+- **Robustness:** Added a check to prevent finishing an empty sticker pack.
 
-## 📦 Sticker Pack Mode (Major Update)
-- **New Architecture:** Refactored `main.py` to support stateful sessions.
-- **Sticker Pack Creation:**
-  - Users can now create entire sticker packs directly within the bot.
-  - Automatic conversion of memes to Telegram Sticker format (PNG 512px).
-  - "Stream Mode": Stickers are uploaded to Telegram immediately upon creation to save server disk space.
-  - Unique naming strategy for packs: `pack_{USER_ID}_{UUID}_by_{BOT_USERNAME}`.
-- **UX Improvements:**
-  - New Start Menu: "Create Meme" vs "Create Sticker Pack".
-  - Persistent Gallery navigation.
-  - "Add Another" flow for rapid pack creation.
+## 🐛 Critical Bug Fixes & UX Polish
+- **Telegram API Compatibility:** Resolved a critical `InputSticker` initialization error (`InputSticker.__init__() got an unexpected keyword argument 'format'`) by updating the syntax to `InputSticker(file, emoji_list=[...])` for `python-telegram-bot` v20+.
+- **Gallery Navigation Reliability:** Fixed a "Silent Fail" issue where clicking menu buttons would delete the message but fail to send the subsequent gallery. This was addressed by:
+    - Decoupling file-reading operations to prevent conflicts when reusing file handles.
+    - Switching to `context.bot.send_photo` for robust sending of new photo messages after deleting previous ones.
+    - Removing `Markdown` parsing from captions to avoid markup-related errors.
+    - Added error messaging for template loading failures.
+- **"Создать Мем" Button Fix:** Ensured the "Создать Мем" button correctly transitions from the text-only welcome message to the image gallery by deleting the initial message and sending a new photo message.
 
-## 🛠 Infrastructure & Deployment
-- Created `Dockerfile` based on `python:3.11-slim`.
-- Configured `.gitignore` and project structure.
-- Added fake HTTP server to keep the bot alive on Render/Heroku.
-- Implemented auto-cleanup of temporary files on startup and after processing.
+## 🛠 Infrastructure
+- Verified `Dockerfile` for correct Python environment and system dependencies.
+- Confirmed `.gitignore` is properly configured to ignore temporary and generated files.
 
-## 🐛 Bug Fixes & UX Polish
-- **CRITICAL FIX:** Solved "Silent Fail" issue in gallery navigation by decoupling file operations and using robust `send_photo` method.
-- **Fixed "Create Meme" button:** Now correctly transitions from text menu to media gallery.
-- **Enhanced Sticker Pack Flow:**
-  - Removed technical pack IDs from user interface.
-  - "Create Sticker Pack" now immediately opens the template gallery.
-  - Added "Add Another" / "Finish" intermediate menu.
-  - Final step displays a clean "Save Sticker Pack" button.
-- **Fixed Telegram API:** Resolved `InputSticker` keyword argument errors.
+This comprehensive update significantly enhances the bot's functionality, usability, and stability.
