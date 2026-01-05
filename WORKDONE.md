@@ -30,3 +30,7 @@
 - Configured `.gitignore` and project structure.
 - Added fake HTTP server to keep the bot alive on Render/Heroku.
 - Implemented auto-cleanup of temporary files on startup and after processing.
+
+## 🐛 Bug Fixes
+- Fixed Telegram API `InputSticker` initialization error (v20+ syntax).
+- Improved Sticker Pack UX: Immediate transition to gallery instead of redundant text messages.

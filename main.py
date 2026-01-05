@@ -369,7 +369,9 @@ async def finalize_generation(update: Update, context: ContextTypes.DEFAULT_TYPE
             # 2. Мгновенная загрузка в Telegram
             try:
                 with open(sticker_path, 'rb') as f:
-                    sticker_input = InputSticker(f, format="static")
+                    # InputSticker требует эмодзи. Ставим дефолтный.
+                    # format передается в create_new_sticker_set, а не сюда.
+                    sticker_input = InputSticker(f, emoji_list=["😀"])
                     
                     if not context.user_data.get('pack_created'):
                         # Создаем новый
