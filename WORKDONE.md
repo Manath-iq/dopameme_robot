@@ -22,6 +22,9 @@
 - **Smart Chat Behavior:**
   - **Private Chats:** Responds to any text message.
   - **Group Chats:** Only responds when explicitly mentioned (`@dopamemerobot`) or via `/start`, preventing spam.
+  - **Contextual Photo Handling:**
+      - **Reply-to-Photo:** Replying to *any* photo in a group with `@dopamemerobot` triggers the meme generation flow using that photo.
+      - **Caption Mention:** Sending a photo with `@dopamemerobot` in the caption immediately triggers the flow.
 
 ## 🐛 Critical Bug Fixes & UX Polish
 - **Telegram API Compatibility:** Resolved a critical `InputSticker` initialization error (`InputSticker.__init__() got an unexpected keyword argument 'format'`) by updating the syntax to `InputSticker(file, emoji_list=[...])` for `python-telegram-bot` v20+.
