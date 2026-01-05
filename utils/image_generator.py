@@ -152,3 +152,29 @@ def generate_demotivator(template_path, text):
     
     canvas.save(output_path)
     return output_path
+
+def prepare_for_sticker(image_path):
+    """
+    Converts an image to Telegram sticker format:
+    - PNG or WEBP
+    - One side exactly 512px, the other <= 512px
+    """
+    img = Image.open(image_path).convert("RGBA")
+    
+    width, height = img.size
+    
+    if width >= height:
+        new_width = 512
+        new_height = int(height * (512 / width))
+    else:
+        new_height = 512
+        new_width = int(width * (512 / height))
+        
+    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    
+    if not os.path.exists("assets/generated"):
+        os.makedirs("assets/generated")
+        
+    output_path = f"assets/generated/{uuid.uuid4()}.png"
+    img.save(output_path, "PNG")
+    return output_path

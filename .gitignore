@@ -34,5 +34,4 @@ assets/user_uploads/*
 # .dockerignore removed to allow tracking
 
 # Temporary files
-WORKDONE.md
 HELLO.md
