@@ -31,6 +31,11 @@
 - Added fake HTTP server to keep the bot alive on Render/Heroku.
 - Implemented auto-cleanup of temporary files on startup and after processing.
 
-## 🐛 Bug Fixes
-- Fixed Telegram API `InputSticker` initialization error (v20+ syntax).
-- Improved Sticker Pack UX: Immediate transition to gallery instead of redundant text messages.
+## 🐛 Bug Fixes & UX Polish
+- **Fixed "Create Meme" button:** Now correctly transitions from text menu to media gallery.
+- **Enhanced Sticker Pack Flow:**
+  - Removed technical pack IDs from user interface.
+  - "Create Sticker Pack" now immediately opens the template gallery.
+  - Added "Add Another" / "Finish" intermediate menu.
+  - Final step displays a clean "Save Sticker Pack" button.
+- **Fixed Telegram API:** Resolved `InputSticker` keyword argument errors.

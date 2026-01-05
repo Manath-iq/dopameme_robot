@@ -33,14 +33,20 @@ if not os.path.exists(USER_UPLOAD_DIR):
 def get_templates():
     return sorted([f for f in os.listdir(TEMPLATE_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+# --- КЛАВИАТУРЫ ---
 
-def get_gallery_keyboard(current_index):
-    """Клавиатура для галереи шаблонов"""
+def get_gallery_keyboard(current_index, sticker_mode=False):
+    """
+    Клавиатура галереи. Одинаковая и для мемов, и для стикерпаков.
+    sticker_mode используется просто для понимания контекста, но кнопки те же.
+    """
+    # Кнопка выбора меняется визуально для понимания, но callback тот же
+    select_text = "✅ Выбрать"
+    
     keyboard = [
         [
             InlineKeyboardButton("⬅️", callback_data=f"prev_{current_index}"),
-            InlineKeyboardButton("✅ Создать Мем", callback_data=f"select_meme_{current_index}"),
+            InlineKeyboardButton(select_text, callback_data=f"select_meme_{current_index}"),
             InlineKeyboardButton("➡️", callback_data=f"next_{current_index}"),
         ],
         [
@@ -62,59 +68,68 @@ def get_user_photo_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_sticker_control_keyboard(pack_link):
-    """Клавиатура управления процессом создания пака"""
+def get_sticker_intermediate_keyboard():
+    """Клавиатура ПОСЛЕ добавления стикера: Продолжить или Закончить"""
     keyboard = [
-        [InlineKeyboardButton("➕ Добавить ещё стикер", callback_data="sticker_continue")],
-        [InlineKeyboardButton("🔗 Ссылка на пак", url=pack_link)],
-        [InlineKeyboardButton("🏁 Закончить", callback_data="sticker_finish")]
+        [InlineKeyboardButton("➕ Добавить ещё", callback_data="sticker_continue")],
+        [InlineKeyboardButton("🏁 Завершить пак", callback_data="sticker_finish")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_sticker_final_keyboard(url):
+    """Финальная кнопка сохранения"""
+    keyboard = [
+        [InlineKeyboardButton("📥 Сохранить стикерпак", url=url)]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 # --- ЛОГИКА ОТОБРАЖЕНИЯ ---
 
 async def show_gallery(update: Update, context: ContextTypes.DEFAULT_TYPE, edit=False):
-    """Показывает галерею шаблонов (используется и для мемов, и для стикеров)"""
+    """Показывает галерею шаблонов"""
     templates = get_templates()
     if not templates:
         text = "Шаблоны не найдены! Добавьте .jpg файлы в assets/templates"
-        if edit:
-            await update.callback_query.message.edit_text(text)
+        if update.callback_query:
+            await update.callback_query.message.reply_text(text)
         else:
             await update.message.reply_text(text)
         return ConversationHandler.END
 
     current_index = context.user_data.get('gallery_index', 0)
     template_path = os.path.join(TEMPLATE_DIR, templates[current_index])
+    sticker_mode = context.user_data.get('sticker_mode', False)
     
-    caption = "Выберите шаблон для мема:"
-    if context.user_data.get('sticker_mode'):
-        # Если пак уже создан, показываем ссылку
-        link_info = ""
-        if context.user_data.get('pack_created'):
-            name = context.user_data.get('pack_name')
-            link_info = f"\n\nПак уже доступен: t.me/addstickers/{name}"
-            
-        caption = f"Режим стикерпака.{link_info}\nВыберите шаблон или пришлите фото:"
+    # Текст меняется в зависимости от режима, чтобы юзер понимал контекст
+    if sticker_mode:
+        caption = "🎨 **Создание стикерпака**\nВыберите шаблон для следующего стикера или отправьте своё фото:"
+    else:
+        caption = "Выберите шаблон для мема или отправьте своё фото:"
 
-    with open(template_path, 'rb') as f:
-        media = InputMediaPhoto(media=f, caption=caption)
-        keyboard = get_gallery_keyboard(current_index)
-        
-        if edit:
-            await update.callback_query.edit_message_media(media=media, reply_markup=keyboard)
-        else:
-            if update.message:
-                await update.message.reply_photo(photo=f, caption=caption, reply_markup=keyboard)
-            elif update.callback_query:
-                # Если переходим из меню, где не было фото
-                await update.callback_query.message.reply_photo(photo=f, caption=caption, reply_markup=keyboard)
+    try:
+        with open(template_path, 'rb') as f:
+            media = InputMediaPhoto(media=f, caption=caption, parse_mode='Markdown')
+            keyboard = get_gallery_keyboard(current_index, sticker_mode)
+            
+            if edit and update.callback_query:
+                # Если редактируем существующее медиа
+                await update.callback_query.edit_message_media(media=media, reply_markup=keyboard)
+            else:
+                # Если присылаем новое (например, после текстового меню)
+                if update.callback_query:
+                    await update.callback_query.message.reply_photo(photo=f, caption=caption, reply_markup=keyboard, parse_mode='Markdown')
+                else:
+                    await update.message.reply_photo(photo=f, caption=caption, reply_markup=keyboard, parse_mode='Markdown')
+    except Exception as e:
+        logging.error(f"Gallery error: {e}")
+        # Если файл битый или удален, пробуем сбросить индекс
+        context.user_data['gallery_index'] = 0
 
 # --- ХЕНДЛЕРЫ КОМАНД ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Стартовое меню"""
-    context.user_data.clear() # Сброс старых данных
+    context.user_data.clear() # Сброс данных новой сессии
     
     keyboard = [
         [InlineKeyboardButton("🤣 Создать Мем", callback_data="mode_meme")],
@@ -122,25 +137,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     
     await update.message.reply_text(
-        "Привет! Я бот @DopaMemerobot.\nЧто будем делать сегодня?",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        "Привет! Я **DopaMeme Bot**. \nЧто будем создавать?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
     )
-    return ConversationHandler.END # Ждем колбэка, состояние не нужно пока
+    return ConversationHandler.END
 
 async def handle_user_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка загрузки фото (универсальная)"""
+    """Обработка загрузки фото"""
     photo_file = await update.message.photo[-1].get_file()
     file_path = os.path.join(USER_UPLOAD_DIR, f"{uuid.uuid4()}.jpg")
     await photo_file.download_to_drive(file_path)
     
     context.user_data['user_template'] = file_path
     
-    sticker_mode = context.user_data.get('sticker_mode', False)
-    text = "Фото получено! Выберите режим:"
-    if sticker_mode:
-        text = "Фото для стикера получено! Выберите режим:"
-        
-    await update.message.reply_text(text, reply_markup=get_user_photo_keyboard())
+    await update.message.reply_text(
+        "Фото загружено. Что с ним сделать?", 
+        reply_markup=get_user_photo_keyboard()
+    )
     return ConversationHandler.END
 
 # --- ОБРАБОТКА КНОПОК ---
@@ -150,61 +164,69 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    # 1. ГЛАВНОЕ МЕНЮ
+    # 1. ВЫБОР РЕЖИМА (ГЛАВНОЕ МЕНЮ)
     if data == "mode_meme":
         context.user_data['sticker_mode'] = False
-        await show_gallery(update, context, edit=False)
+        # Удаляем текстовое меню и присылаем галерею
         await query.message.delete()
+        await show_gallery(update, context, edit=False)
         return
 
     elif data == "mode_pack":
         context.user_data['sticker_mode'] = True
         context.user_data['pack_created'] = False
         
-        # Генерируем имя пака заранее
+        # Генерируем данные пака (но пока не показываем пользователю)
         user_id = update.effective_user.id
         bot = await context.bot.get_me()
         unique_id = str(uuid.uuid4()).replace('-', '')[:8]
         
-        # Имя пака: unique per pack session
-        pack_name = f"pack_{user_id}_{unique_id}_by_{bot.username}"
-        pack_title = f"@DopaMemerobot Pack {unique_id}"
+        # Название для Telegram (техническое)
+        context.user_data['pack_name'] = f"pack_{user_id}_{unique_id}_by_{bot.username}"
+        # Отображаемое название
+        context.user_data['pack_title'] = f"DopaMeme Pack {unique_id}"
         
-        context.user_data['pack_name'] = pack_name
-        context.user_data['pack_title'] = pack_title
-        
-        await query.message.edit_text(f"📦 Новый пак будет называться:\n{pack_title}\n\nСоздавайте мемы, они будут добавляться автоматически!")
+        # Удаляем меню и сразу показываем галерею для первого стикера
+        await query.message.delete()
         await show_gallery(update, context, edit=False)
         return
 
-    # 2. НАВИГАЦИЯ СТИКЕРПАКА
+    # 2. УПРАВЛЕНИЕ СТИКЕРПАКОМ
     elif data == "sticker_continue":
+        # Удаляем сообщение с кнопками "Добавить/Завершить"
+        await query.message.delete()
+        # Показываем галерею снова
         await show_gallery(update, context, edit=False)
         return
         
     elif data == "sticker_finish":
-        # Если пак не был создан (0 стикеров), не даем ссылку
         if not context.user_data.get('pack_created'):
-            await query.message.edit_text("Вы не добавили ни одного стикера! Пак не создан.")
-            context.user_data.clear()
+            await query.message.edit_text("Пак пуст. Создайте хотя бы один мем!")
             return ConversationHandler.END
 
-        # Просто сбрасываем режим и говорим спасибо
         pack_name = context.user_data.get('pack_name')
         link = f"https://t.me/addstickers/{pack_name}"
-        await query.message.edit_text(f"✅ **Работа завершена!**\n\nВаш пак здесь: {link}", parse_mode='Markdown')
+        
+        # Красивый финиш
+        await query.message.delete() # Удаляем промежуточное меню
+        await query.message.reply_text(
+            "✅ **Стикерпак готов!**\n\nНажмите кнопку ниже, чтобы добавить его к себе.",
+            reply_markup=get_sticker_final_keyboard(link),
+            parse_mode='Markdown'
+        )
+        # Очищаем сессию
         context.user_data.clear()
         return ConversationHandler.END
 
-    # 3. ЭФФЕКТЫ (ПОДМЕНЮ)
+    # 3. ЭФФЕКТЫ
     elif data == "user_select_effects":
         keyboard = [
-            [InlineKeyboardButton("🫠 Жидкий (Liquid)", callback_data="effect_liquid")],
-            [InlineKeyboardButton("🍟 Прожарка (Deep Fried)", callback_data="effect_deepfry")],
-            [InlineKeyboardButton("🌀 Вихрь (Swirl)", callback_data="effect_warp")],
-            [InlineKeyboardButton("👁️‍🗨️ Криспи (Crispy)", callback_data="effect_crispy")],
-            [InlineKeyboardButton("👀 Рыбий глаз (Bulge)", callback_data="effect_bulge")],
-            [InlineKeyboardButton("🕳️ Дырка (Pinch)", callback_data="effect_pinch")],
+            [InlineKeyboardButton("🫠 Жидкий", callback_data="effect_liquid")],
+            [InlineKeyboardButton("🍟 Прожарка", callback_data="effect_deepfry")],
+            [InlineKeyboardButton("🌀 Вихрь", callback_data="effect_warp")],
+            [InlineKeyboardButton("👁️‍🗨️ Криспи", callback_data="effect_crispy")],
+            [InlineKeyboardButton("👀 Рыбий глаз", callback_data="effect_bulge")],
+            [InlineKeyboardButton("🕳️ Дырка", callback_data="effect_pinch")],
             [InlineKeyboardButton("🔙 Назад", callback_data="back_to_user_photo")]
         ]
         await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
@@ -214,10 +236,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_reply_markup(reply_markup=get_user_photo_keyboard())
         return
 
-    # 4. ОБРАБОТКА ЭФФЕКТОВ
+    # Применение эффектов
     if data.startswith("effect_"):
         if 'user_template' not in context.user_data:
-             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
+             await query.message.edit_text("Ошибка: фото потеряно.")
              return ConversationHandler.END
         
         template_path = context.user_data['user_template']
@@ -231,7 +253,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         
         func, kwargs, emoji = effect_map[data]
-        
         await query.message.edit_text(f"{emoji} Обрабатываю...", reply_markup=None)
         msg = query.message
         
@@ -245,32 +266,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.edit_text("❌ Ошибка при обработке.")
             return ConversationHandler.END
 
-    # 5. ВЫБОР РЕЖИМА
+    # 4. ВЫБОР ДЕЙСТВИЯ С КАРТИНКОЙ (Мем/Демотиватор)
     if data == "user_select_meme":
         if 'user_template' not in context.user_data:
-            await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
+            await query.message.edit_text("Ошибка: фото потеряно.")
             return ConversationHandler.END
         context.user_data['template'] = context.user_data['user_template']
-        await query.message.edit_text("📝 **Режим Мема**\nВведите текст (Верх . Низ):", parse_mode='Markdown')
+        await query.message.edit_text("📝 Введите текст для мема (Верх . Низ):")
         return WAITING_MEME_TEXT
         
     elif data == "user_select_dem":
         if 'user_template' not in context.user_data:
-             await query.message.edit_text("Ошибка: фото потеряно. Пришлите снова.")
+             await query.message.edit_text("Ошибка: фото потеряно.")
              return ConversationHandler.END
         context.user_data['template'] = context.user_data['user_template']
-        await query.message.edit_text("🖼 **Режим Демотиватора**\nВведите подпись:", parse_mode='Markdown')
+        await query.message.edit_text("🖼 Введите текст для демотиватора:")
         return WAITING_DEMOTIVATOR_TEXT
 
-    # Галерея
-    templates = get_templates()
+    # 5. НАВИГАЦИЯ ПО ГАЛЕРЕЕ
+    # Формат данных: action_index (prev_0, select_meme_0)
     try:
         parts = data.rsplit('_', 1)
         action_base = parts[0]
         index = int(parts[1])
     except:
-        return
+        return 
         
+    templates = get_templates()
+    
     if action_base == "prev" or action_base == "next":
         new_index = (index - 1) % len(templates) if action_base == "prev" else (index + 1) % len(templates)
         context.user_data['gallery_index'] = new_index
@@ -280,8 +303,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action_base == "select_meme":
         context.user_data['template'] = os.path.join(TEMPLATE_DIR, templates[index])
         await query.message.edit_caption(
-            caption="📝 **Режим Мема**\nВведите текст (Верх . Низ):",
-            parse_mode='Markdown',
+            caption="📝 Введите текст для мема (Верх . Низ):",
             reply_markup=None
         )
         return WAITING_MEME_TEXT
@@ -289,39 +311,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action_base == "select_dem":
         context.user_data['template'] = os.path.join(TEMPLATE_DIR, templates[index])
         await query.message.edit_caption(
-            caption="🖼 **Режим Демотиватора**\nВведите подпись:",
-            parse_mode='Markdown',
+            caption="🖼 Введите текст для демотиватора:",
             reply_markup=None
         )
         return WAITING_DEMOTIVATOR_TEXT
 
 
-# --- ХЕНДЛЕРЫ ГЕНЕРАЦИИ ---
+# --- ГЕНЕРАЦИЯ ---
 
 async def generate_meme_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     template_path = context.user_data.get('template')
     
     if not template_path or not os.path.exists(template_path):
-        await update.message.reply_text("Шаблон не найден. Начните заново.")
+        await update.message.reply_text("Ошибка: шаблон не найден.")
         return ConversationHandler.END
         
     parts = text.split('.', 1)
     top_text = parts[0].strip()
     bottom_text = parts[1].strip() if len(parts) > 1 else ""
     
-    msg = await update.message.reply_text("🎨 Рисую мем...")
+    msg = await update.message.reply_text("🎨 Рисую...")
     
     try:
         output_path = generate_meme(template_path, top_text, bottom_text)
         await finalize_generation(update, context, output_path, msg)
         
+        # Если это было фото юзера, удаляем исходник
         if "user_uploads" in template_path and os.path.exists(template_path):
             os.remove(template_path)
             
     except Exception as e:
-        logging.error(f"Error: {e}")
-        await msg.edit_text("❌ Ошибка при генерации.")
+        logging.error(f"Generate Meme Error: {e}")
+        await msg.edit_text("❌ Ошибка генерации.")
         
     return ConversationHandler.END
 
@@ -330,10 +352,10 @@ async def generate_demotivator_handler(update: Update, context: ContextTypes.DEF
     template_path = context.user_data.get('template')
     
     if not template_path or not os.path.exists(template_path):
-        await update.message.reply_text("Шаблон не найден. Начните заново.")
+        await update.message.reply_text("Ошибка: шаблон не найден.")
         return ConversationHandler.END
         
-    msg = await update.message.reply_text("🎨 Рисую демотиватор...")
+    msg = await update.message.reply_text("🎨 Рисую...")
     
     try:
         output_path = generate_demotivator(template_path, text)
@@ -343,38 +365,34 @@ async def generate_demotivator_handler(update: Update, context: ContextTypes.DEF
             os.remove(template_path)
 
     except Exception as e:
-        logging.error(f"Error: {e}")
-        await msg.edit_text("❌ Ошибка при генерации.")
+        logging.error(f"Generate Dem Error: {e}")
+        await msg.edit_text("❌ Ошибка генерации.")
         
     return ConversationHandler.END
 
-# --- ФИНАЛИЗАЦИЯ (ИЗМЕНЕНА ДЛЯ ЭКОНОМИИ МЕСТА) ---
+# --- ФИНАЛИЗАЦИЯ (ГЛАВНАЯ ЛОГИКА) ---
 
 async def finalize_generation(update: Update, context: ContextTypes.DEFAULT_TYPE, image_path, loading_msg):
     """
-    Если sticker_mode: сразу добавляем в пак и удаляем файл.
-    Если обычный: отправляем фото и удаляем файл.
+    Универсальное завершение.
     """
     try:
+        # --- РЕЖИМ СТИКЕРПАКА ---
         if context.user_data.get('sticker_mode'):
             # 1. Конвертация
             sticker_path = prepare_for_sticker(image_path)
-            os.remove(image_path) # Удаляем промежуточный JPG
+            os.remove(image_path) # Удаляем JPG
             
             user_id = update.effective_user.id
             pack_name = context.user_data['pack_name']
             pack_title = context.user_data['pack_title']
-            pack_link = f"https://t.me/addstickers/{pack_name}"
             
-            # 2. Мгновенная загрузка в Telegram
+            # 2. Добавление в Telegram
             try:
                 with open(sticker_path, 'rb') as f:
-                    # InputSticker требует эмодзи. Ставим дефолтный.
-                    # format передается в create_new_sticker_set, а не сюда.
                     sticker_input = InputSticker(f, emoji_list=["😀"])
                     
                     if not context.user_data.get('pack_created'):
-                        # Создаем новый
                         await context.bot.create_new_sticker_set(
                             user_id=user_id,
                             name=pack_name,
@@ -383,38 +401,32 @@ async def finalize_generation(update: Update, context: ContextTypes.DEFAULT_TYPE
                             sticker_format="static"
                         )
                         context.user_data['pack_created'] = True
-                        status_text = f"✅ Пак создан!\nСтикер добавлен."
                     else:
-                        # Добавляем в существующий
                         await context.bot.add_sticker_to_set(
                             user_id=user_id,
                             name=pack_name,
                             sticker=sticker_input
                         )
-                        status_text = f"✅ Стикер добавлен в пак."
 
-                # 3. Отправляем превью пользователю (просто как документ, файл уже закрыт)
-                # Чтобы отправить файл снова, нужно открыть его снова, но лучше отправить успешный статус
-                # И отправить САМ файл пользователю, чтобы он видел, что получилось
+                # 3. Успех -> Показываем превью и меню выбора
+                # Отправляем стикер пользователю, чтобы он видел, что получилось
                 with open(sticker_path, 'rb') as f:
                     await loading_msg.delete()
+                    # Отправляем как документ или фото, чтобы показать результат
                     await update.effective_message.reply_document(
                         document=f,
-                        caption=f"{status_text}\n<{pack_title}>",
-                        reply_markup=get_sticker_control_keyboard(pack_link)
+                        caption="✅ Стикер добавлен!",
+                        reply_markup=get_sticker_intermediate_keyboard()
                     )
 
             except Exception as e:
-                logging.error(f"Telegram API Error: {e}")
-                await loading_msg.edit_text(f"❌ Ошибка Telegram API:\n{e}")
-                
+                logging.error(f"Sticker API Error: {e}")
+                await loading_msg.edit_text(f"❌ Ошибка Telegram: {e}")
             finally:
-                # 4. ВАЖНО: Удаляем файл немедленно
-                if os.path.exists(sticker_path):
-                    os.remove(sticker_path)
+                if os.path.exists(sticker_path): os.remove(sticker_path)
 
+        # --- ОБЫЧНЫЙ РЕЖИМ ---
         else:
-            # Обычный режим
             with open(image_path, 'rb') as f:
                 await update.effective_message.reply_photo(f)
             await loading_msg.delete()
@@ -422,14 +434,14 @@ async def finalize_generation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     except Exception as e:
         logging.error(f"Finalize Error: {e}")
-        # Пытаемся почистить даже при ошибке
         if os.path.exists(image_path): os.remove(image_path)
+        await loading_msg.edit_text("❌ Критическая ошибка.")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Отменено. Введите /start.")
     return ConversationHandler.END
 
-# --- ЗАПУСК ---
+# --- СТАРТ ---
 
 def cleanup_temp_files():
     dirs_to_clean = [USER_UPLOAD_DIR, "assets/generated"]
