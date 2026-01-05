@@ -424,7 +424,7 @@ if __name__ == '__main__':
 
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler('start', start),
+            CommandHandler(['start', 'dopa'], start),
             MessageHandler(start_filter, start),
             CallbackQueryHandler(button_handler),
             MessageHandler(photo_filter, handle_user_photo)

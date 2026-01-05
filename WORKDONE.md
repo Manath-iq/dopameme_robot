@@ -22,7 +22,7 @@
 - **Smart Chat Behavior:**
   - **Private Chats:** Responds to any text message.
   - **Group Chats:** Only responds when explicitly mentioned (`@dopamemerobot`) or via `/start`, preventing spam.
-  - **Contextual Photo Handling:**
+  - **New Bot Command:** Added `/dopa` as an alternative command to `/start` for initiating bot functions, especially useful for photo replies in groups.
       - **Reply-to-Photo:** Replying to *any* photo in a group with `@dopamemerobot` triggers the meme generation flow using that photo.
       - **Caption Mention:** Sending a photo with `@dopamemerobot` in the caption immediately triggers the flow.
 
