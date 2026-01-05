@@ -491,10 +491,18 @@ if __name__ == '__main__':
 
     application = ApplicationBuilder().token(TOKEN).build()
     
+    # Фильтр для запуска меню:
+    # 1. Личка: любой текст
+    # 2. Группы: только текст с упоминанием (@bot)
+    start_filter = (
+        (filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND) | 
+        ((filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP) & filters.TEXT & filters.Mention)
+    )
+
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, start),
+            MessageHandler(start_filter, start),
             CallbackQueryHandler(button_handler),
             MessageHandler(filters.PHOTO, handle_user_photo)
         ],

@@ -19,11 +19,9 @@
     - Ensured that user-uploaded photos can also be used for sticker creation within the sticker pack flow.
 - **Robustness:** Added a check to prevent finishing an empty sticker pack.
 
-- **UX Tweak:** Configured the bot to show the Welcome Menu on *any* text message, not just `/start`.
-
-- **Visual Branding:** Added an automatic watermark (`@dopamemerobot`) to the **bottom-left** corner using the **Impact** font.
-  - **Smart Scaling:** Font size (3.5%) and outline width are now fully proportional to the image resolution, ensuring consistent legibility on both thumbnails and 4K images.
-  - **Visibility:** 60% opacity with adaptive black outline.
+- **Smart Chat Behavior:**
+  - **Private Chats:** Responds to any text message.
+  - **Group Chats:** Only responds when explicitly mentioned (`@dopamemerobot`) or via `/start`, preventing spam.
 
 ## 🐛 Critical Bug Fixes & UX Polish
 - **Telegram API Compatibility:** Resolved a critical `InputSticker` initialization error (`InputSticker.__init__() got an unexpected keyword argument 'format'`) by updating the syntax to `InputSticker(file, emoji_list=[...])` for `python-telegram-bot` v20+.
