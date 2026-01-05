@@ -8,13 +8,10 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Callb
 
 from utils.image_generator import generate_meme, generate_demotivator, prepare_for_sticker
 from utils.effects import liquid_resize, deep_fry_effect, warp_effect, crispy_effect, lens_bulge_effect, lens_pinch_effect
+import config
 
 # Загрузка переменных окружения
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")
-
-# КОНФИГУРАЦИЯ КАНАЛА
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@dopamemechan") # Имя канала для проверки подписки
 
 # Логирование
 logging.basicConfig(
@@ -22,37 +19,32 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Состояния
-WAITING_MEME_TEXT = 1
-WAITING_DEMOTIVATOR_TEXT = 2
-
 # Директории
-TEMPLATE_DIR = "assets/templates"
-USER_UPLOAD_DIR = "assets/user_uploads"
+if not os.path.exists(config.USER_UPLOAD_DIR):
+    os.makedirs(config.USER_UPLOAD_DIR)
 
-if not os.path.exists(USER_UPLOAD_DIR):
-    os.makedirs(USER_UPLOAD_DIR)
+# Caching for templates
+_templates_cache = None
 
 def get_templates():
-    return sorted([f for f in os.listdir(TEMPLATE_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+    global _templates_cache
+    if _templates_cache is None:
+        _templates_cache = sorted([f for f in os.listdir(config.TEMPLATE_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+    return _templates_cache
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
 async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Проверяет, подписан ли пользователь на указанный канал."""
     try:
-        member = await context.bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        member = await context.bot.get_chat_member(chat_id=config.CHANNEL_USERNAME, user_id=user_id)
         # Статусы, указывающие на то, что пользователь является участником канала
         if member.status in ['member', 'administrator', 'creator']:
             return True
         else:
             return False
     except Exception as e:
-        logging.error(f"Ошибка при проверке подписки для {user_id} на {CHANNEL_USERNAME}: {e}")
-        # Если бот не является админом или канал недоступен, считаем, что проверка не удалась
-        # В таком случае лучше разрешить пользоваться ботом, чтобы не блокировать функционал
-        # Или можно вернуть False, чтобы требовать подписку, если бот ожидает быть админом.
-        # Для этой задачи: если ошибка, будем считать, что не подписан, чтобы побудить подписаться
+        logging.error(f"Ошибка при проверке подписки для {user_id} на {config.CHANNEL_USERNAME}: {e}. Возможно, бот не является администратором в канале.")
         return False
 
 # --- КЛАВИАТУРЫ ---
@@ -61,12 +53,12 @@ def get_gallery_keyboard(current_index, sticker_mode=False):
     select_text = "✅ Выбрать"
     keyboard = [
         [
-            InlineKeyboardButton("⬅️", callback_data=f"prev_{current_index}"),
-            InlineKeyboardButton(select_text, callback_data=f"select_meme_{current_index}"),
-            InlineKeyboardButton("➡️", callback_data=f"next_{current_index}"),
+            InlineKeyboardButton("⬅️", callback_data=f"{config.CALLBACK_GALLERY_PREV_PREFIX}{current_index}"),
+            InlineKeyboardButton(select_text, callback_data=f"{config.CALLBACK_GALLERY_SELECT_MEME_PREFIX}{current_index}"),
+            InlineKeyboardButton("➡️", callback_data=f"{config.CALLBACK_GALLERY_NEXT_PREFIX}{current_index}"),
         ],
         [
-            InlineKeyboardButton("🖼 Демотиватор", callback_data=f"select_dem_{current_index}")
+            InlineKeyboardButton("🖼 Демотиватор", callback_data=f"{config.CALLBACK_GALLERY_SELECT_DEM_PREFIX}{current_index}")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -74,19 +66,19 @@ def get_gallery_keyboard(current_index, sticker_mode=False):
 def get_user_photo_keyboard():
     keyboard = [
         [
-            InlineKeyboardButton("✅ Мем", callback_data="user_select_meme"),
-            InlineKeyboardButton("🖼 Демотиватор", callback_data="user_select_dem")
+            InlineKeyboardButton("✅ Мем", callback_data=config.CALLBACK_USER_SELECT_MEME),
+            InlineKeyboardButton("🖼 Демотиватор", callback_data=config.CALLBACK_USER_SELECT_DEM)
         ],
         [
-            InlineKeyboardButton("✨ Эффекты", callback_data="user_select_effects")
+            InlineKeyboardButton("✨ Эффекты", callback_data=config.CALLBACK_USER_SELECT_EFFECTS)
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_sticker_intermediate_keyboard():
     keyboard = [
-        [InlineKeyboardButton("➕ Добавить ещё", callback_data="sticker_continue")],
-        [InlineKeyboardButton("🏁 Завершить пак", callback_data="sticker_finish")]
+        [InlineKeyboardButton("➕ Добавить ещё", callback_data=config.CALLBACK_STICKER_CONTINUE)],
+        [InlineKeyboardButton("🏁 Завершить пак", callback_data=config.CALLBACK_STICKER_FINISH)]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -101,7 +93,7 @@ def get_sticker_final_keyboard(url):
 async def process_photo_setup(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_obj):
     """Универсальная функция: скачивает фото и показывает меню выбора действий."""
     photo_file = await photo_obj.get_file()
-    file_path = os.path.join(USER_UPLOAD_DIR, f"{uuid.uuid4()}.jpg")
+    file_path = os.path.join(config.USER_UPLOAD_DIR, f"{uuid.uuid4()}.jpg")
     await photo_file.download_to_drive(file_path)
     
     context.user_data['user_template'] = file_path
@@ -133,7 +125,7 @@ async def show_gallery(update: Update, context: ContextTypes.DEFAULT_TYPE, edit=
         current_index = 0
         context.user_data['gallery_index'] = 0
         
-    template_path = os.path.join(TEMPLATE_DIR, templates[current_index])
+    template_path = os.path.join(config.TEMPLATE_DIR, templates[current_index])
     sticker_mode = context.user_data.get('sticker_mode', False)
     
     if sticker_mode:
@@ -172,10 +164,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверка подписки на канал
     if not await check_subscription(user_id, context):
         keyboard = InlineKeyboardMarkup([[ 
-            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")
+            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{config.CHANNEL_USERNAME.lstrip('@')}")
         ]])
         await update.effective_message.reply_text(
-            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_USERNAME}",
+            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {config.CHANNEL_USERNAME}",
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
@@ -191,8 +183,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear() 
     
     keyboard = [
-        [InlineKeyboardButton("🤣 Создать Мем", callback_data="mode_meme")],
-        [InlineKeyboardButton("📦 Создать Стикерпак", callback_data="mode_pack")]
+        [InlineKeyboardButton("🤣 Создать Мем", callback_data=config.CALLBACK_MODE_MEME)],
+        [InlineKeyboardButton("📦 Создать Стикерпак", callback_data=config.CALLBACK_MODE_PACK)]
     ]
     
     await message.reply_text(
@@ -208,10 +200,10 @@ async def handle_user_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверка подписки на канал
     if not await check_subscription(user_id, context):
         keyboard = InlineKeyboardMarkup([[ 
-            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")
+            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{config.CHANNEL_USERNAME.lstrip('@')}")
         ]])
         await update.effective_message.reply_text(
-            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_USERNAME}",
+            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {config.CHANNEL_USERNAME}",
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
@@ -221,35 +213,15 @@ async def handle_user_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_photo_setup(update, context, photo)
     return ConversationHandler.END
 
-# --- ОБРАБОТКА КНОПОК И ГЕНЕРАЦИЯ ---
-# (Остальной код остается без изменений, но я его полностью приведу для целостности файла)
+# --- HELPER FUNCTIONS FOR button_handler REFACTORING ---
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
     query = update.callback_query
-    await query.answer()
-    data = query.data
-
-    user_id = update.effective_user.id
-    # Проверка подписки на канал (для кнопок)
-    if not await check_subscription(user_id, context):
-        keyboard = InlineKeyboardMarkup([[ 
-            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")
-        ]])
-        await update.effective_message.reply_text(
-            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_USERNAME}",
-            reply_markup=keyboard,
-            parse_mode='Markdown'
-        )
-        return ConversationHandler.END
-
-    # 1. МЕНЮ
-    if data == "mode_meme":
+    if data == config.CALLBACK_MODE_MEME:
         context.user_data['sticker_mode'] = False
         await query.message.delete()
         await show_gallery(update, context, edit=False)
-        return
-
-    elif data == "mode_pack":
+    elif data == config.CALLBACK_MODE_PACK:
         context.user_data['sticker_mode'] = True
         context.user_data['pack_created'] = False
         user_id = update.effective_user.id
@@ -259,14 +231,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['pack_title'] = f"DopaMeme Pack {unique_id}"
         await query.message.delete()
         await show_gallery(update, context, edit=False)
-        return
+    return ConversationHandler.END # End conversation after initial menu selection
 
-    # 2. СТИКЕРЫ
-    elif data == "sticker_continue":
+async def _handle_sticker_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
+    query = update.callback_query
+    if data == config.CALLBACK_STICKER_CONTINUE:
         await query.message.delete()
         await show_gallery(update, context, edit=False)
-        return
-    elif data == "sticker_finish":
+        return # Do not end conversation, user continues adding stickers
+    elif data == config.CALLBACK_STICKER_FINISH:
         if not context.user_data.get('pack_created'):
             await query.message.edit_text("Пак пуст. Создайте хотя бы один мем!")
             return ConversationHandler.END
@@ -276,23 +249,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("✅ **Стикерпак готов!**\n\nНажмите кнопку ниже, чтобы добавить его к себе.", reply_markup=get_sticker_final_keyboard(link), parse_mode='Markdown')
         context.user_data.clear()
         return ConversationHandler.END
+    return ConversationHandler.END
 
-    # 3. ЭФФЕКТЫ
-    elif data == "user_select_effects":
+async def _handle_effect_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
+    query = update.callback_query
+    if data == config.CALLBACK_USER_SELECT_EFFECTS:
         keyboard = [
-            [InlineKeyboardButton("🫠 Жидкий", callback_data="effect_liquid")],
-            [InlineKeyboardButton("🍟 Прожарка", callback_data="effect_deepfry")],
-            [InlineKeyboardButton("🌀 Вихрь", callback_data="effect_warp")],
-            [InlineKeyboardButton("👁️‍🗨️ Криспи", callback_data="effect_crispy")],
-            [InlineKeyboardButton("👀 Рыбий глаз", callback_data="effect_bulge")],
-            [InlineKeyboardButton("🕳️ Дырка", callback_data="effect_pinch")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_user_photo")]
+            [InlineKeyboardButton("🫠 Жидкий", callback_data=config.CALLBACK_EFFECT_LIQUID)],
+            [InlineKeyboardButton("🍟 Прожарка", callback_data=config.CALLBACK_EFFECT_DEEPFRY)],
+            [InlineKeyboardButton("🌀 Вихрь", callback_data=config.CALLBACK_EFFECT_WARP)],
+            [InlineKeyboardButton("👁️‍🗨️ Криспи", callback_data=config.CALLBACK_EFFECT_CRISPY)],
+            [InlineKeyboardButton("👀 Рыбий глаз", callback_data=config.CALLBACK_EFFECT_BULGE)],
+            [InlineKeyboardButton("🕳️ Дырка", callback_data=config.CALLBACK_EFFECT_PINCH)],
+            [InlineKeyboardButton("🔙 Назад", callback_data=config.CALLBACK_BACK_TO_USER_PHOTO)]
         ]
         await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-    elif data == "back_to_user_photo":
+        return # Do not end conversation, user chooses effect
+    elif data == config.CALLBACK_BACK_TO_USER_PHOTO:
         await query.message.edit_reply_markup(reply_markup=get_user_photo_keyboard())
-        return
+        return # Do not end conversation, user goes back to photo menu
 
     if data.startswith("effect_"):
         if 'user_template' not in context.user_data:
@@ -300,12 +275,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              return ConversationHandler.END
         template_path = context.user_data['user_template']
         effect_map = {
-            "effect_liquid": (liquid_resize, {"scale": 0.5}, "🫠"),
-            "effect_deepfry": (deep_fry_effect, {}, "🍟"),
-            "effect_warp": (warp_effect, {}, "🌀"),
-            "effect_crispy": (crispy_effect, {}, "👁️‍🗨️"),
-            "effect_bulge": (lens_bulge_effect, {}, "👀"),
-            "effect_pinch": (lens_pinch_effect, {}, "🕳️"),
+            config.CALLBACK_EFFECT_LIQUID: (liquid_resize, {"scale": 0.5}, "🫠"),
+            config.CALLBACK_EFFECT_DEEPFRY: (deep_fry_effect, {}, "🍟"),
+            config.CALLBACK_EFFECT_WARP: (warp_effect, {}, "🌀"),
+            config.CALLBACK_EFFECT_CRISPY: (crispy_effect, {}, "👁️‍🗨️"),
+            config.CALLBACK_EFFECT_BULGE: (lens_bulge_effect, {}, "👀"),
+            config.CALLBACK_EFFECT_PINCH: (lens_pinch_effect, {}, "🕳️"),
         }
         func, kwargs, emoji = effect_map[data]
         await query.message.edit_text(f"{emoji} Обрабатываю...", reply_markup=None)
@@ -319,45 +294,85 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logging.error(f"Effect error: {e}")
             await msg.edit_text("❌ Ошибка при обработке.")
             return ConversationHandler.END
+    return ConversationHandler.END # Default end, though specific effect handlers usually end it.
 
-    # 4. ВЫБОР РЕЖИМА
-    if data == "user_select_meme":
-        if 'user_template' not in context.user_data:
-            await query.message.edit_text("Ошибка: фото потеряно.")
-            return ConversationHandler.END
-        context.user_data['template'] = context.user_data['user_template']
+async def _handle_user_photo_action(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
+    query = update.callback_query
+    if 'user_template' not in context.user_data:
+        await query.message.edit_text("Ошибка: фото потеряно.")
+        return ConversationHandler.END
+    context.user_data['template'] = context.user_data['user_template']
+    if data == config.CALLBACK_USER_SELECT_MEME:
         await query.message.edit_text("📝 Введите текст для мема (Верх . Низ):")
-        return WAITING_MEME_TEXT
-    elif data == "user_select_dem":
-        if 'user_template' not in context.user_data:
-             await query.message.edit_text("Ошибка: фото потеряно.")
-             return ConversationHandler.END
-        context.user_data['template'] = context.user_data['user_template']
+        return config.WAITING_MEME_TEXT
+    elif data == config.CALLBACK_USER_SELECT_DEM:
         await query.message.edit_text("🖼 Введите текст для демотиватора:")
-        return WAITING_DEMOTIVATOR_TEXT
+        return config.WAITING_DEMOTIVATOR_TEXT
+    return ConversationHandler.END
 
-    # 5. ГАЛЕРЕЯ
+async def _handle_gallery_action(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
+    query = update.callback_query
     try:
         parts = data.rsplit('_', 1)
-        action_base = parts[0]
+        action_base = parts[0] + "_"
         index = int(parts[1])
     except:
-        return 
+        logging.error(f"Invalid gallery callback data: {data}")
+        return ConversationHandler.END 
+    
     templates = get_templates()
-    if action_base == "prev" or action_base == "next":
-        new_index = (index - 1) % len(templates) if action_base == "prev" else (index + 1) % len(templates)
+    if action_base == config.CALLBACK_GALLERY_PREV_PREFIX or action_base == config.CALLBACK_GALLERY_NEXT_PREFIX:
+        new_index = (index - 1) % len(templates) if action_base == config.CALLBACK_GALLERY_PREV_PREFIX else (index + 1) % len(templates)
         context.user_data['gallery_index'] = new_index
         await show_gallery(update, context, edit=True)
-        return
-    elif action_base == "select_meme":
-        context.user_data['template'] = os.path.join(TEMPLATE_DIR, templates[index])
+        return # Do not end conversation, user navigates gallery
+    elif action_base == config.CALLBACK_GALLERY_SELECT_MEME_PREFIX:
+        context.user_data['template'] = os.path.join(config.TEMPLATE_DIR, templates[index])
         await query.message.edit_caption(caption="📝 Введите текст для мема (Верх . Низ):", reply_markup=None)
-        return WAITING_MEME_TEXT
-    elif action_base == "select_dem":
-        context.user_data['template'] = os.path.join(TEMPLATE_DIR, templates[index])
+        return config.WAITING_MEME_TEXT
+    elif action_base == config.CALLBACK_GALLERY_SELECT_DEM_PREFIX:
+        context.user_data['template'] = os.path.join(config.TEMPLATE_DIR, templates[index])
         await query.message.edit_caption(caption="🖼 Введите текст для демотиватора:", reply_markup=None)
-        return WAITING_DEMOTIVATOR_TEXT
+        return config.WAITING_DEMOTIVATOR_TEXT
+    return ConversationHandler.END
 
+# --- Refactored button_handler ---
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user_id = update.effective_user.id
+    # Subscription check remains here as it's a critical gate for all interactions
+    if not await check_subscription(user_id, context):
+        keyboard = InlineKeyboardMarkup([[ 
+            InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{config.CHANNEL_USERNAME.lstrip('@')}")
+        ]])
+        await update.effective_message.reply_text(
+            f"Для использования бота, пожалуйста, подпишитесь на наш канал: {config.CHANNEL_USERNAME}",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END
+
+    # Route to helper functions based on callback data
+    if data in [config.CALLBACK_MODE_MEME, config.CALLBACK_MODE_PACK]:
+        return await _handle_menu_selection(update, context, data)
+    elif data in [config.CALLBACK_STICKER_CONTINUE, config.CALLBACK_STICKER_FINISH]:
+        return await _handle_sticker_flow(update, context, data)
+    elif data == config.CALLBACK_USER_SELECT_EFFECTS or data == config.CALLBACK_BACK_TO_USER_PHOTO or data.startswith("effect_"):
+        return await _handle_effect_selection(update, context, data)
+    elif data == config.CALLBACK_USER_SELECT_MEME or data == config.CALLBACK_USER_SELECT_DEM:
+        return await _handle_user_photo_action(update, context, data)
+    elif data.startswith(config.CALLBACK_GALLERY_PREV_PREFIX) or \
+         data.startswith(config.CALLBACK_GALLERY_NEXT_PREFIX) or \
+         data.startswith(config.CALLBACK_GALLERY_SELECT_MEME_PREFIX) or \
+         data.startswith(config.CALLBACK_GALLERY_SELECT_DEM_PREFIX):
+        return await _handle_gallery_action(update, context, data)
+    
+    # Fallback for unhandled callback data - should ideally not be reached
+    logging.warning(f"Unhandled callback data: {data}")
+    return ConversationHandler.END
 async def generate_meme_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     template_path = context.user_data.get('template')
@@ -405,9 +420,9 @@ async def finalize_generation(update: Update, context: ContextTypes.DEFAULT_TYPE
             pack_title = context.user_data['pack_title']
             try:
                 with open(sticker_path, 'rb') as f:
-                    sticker_input = InputSticker(f, emoji_list=["😀"])
+                    sticker_input = InputSticker(f, emoji_list=[config.STICKER_EMOJI])
                     if not context.user_data.get('pack_created'):
-                        await context.bot.create_new_sticker_set(user_id=user_id, name=pack_name, title=pack_title, stickers=[sticker_input], sticker_format="static")
+                        await context.bot.create_new_sticker_set(user_id=user_id, name=pack_name, title=pack_title, stickers=[sticker_input], sticker_format=config.STICKER_FORMAT)
                         context.user_data['pack_created'] = True
                     else:
                         await context.bot.add_sticker_to_set(user_id=user_id, name=pack_name, sticker=sticker_input)
@@ -434,7 +449,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 def cleanup_temp_files():
-    dirs_to_clean = [USER_UPLOAD_DIR, "assets/generated"]
+    dirs_to_clean = [config.USER_UPLOAD_DIR, config.GENERATED_DIR]
     for d in dirs_to_clean:
         if os.path.exists(d):
             for f in os.listdir(d):
@@ -443,15 +458,16 @@ def cleanup_temp_files():
                     if os.path.isfile(file_path):
                         os.remove(file_path)
                 except Exception as e:
-                    print(f"Error cleaning {file_path}: {e}")
+                    logging.error(f"Error cleaning {file_path}: {e}")
 
 if __name__ == '__main__':
-    if not TOKEN:
+    if not config.BOT_TOKEN:
         print("Error: BOT_TOKEN not found in .env")
         exit(1)
-    if not CHANNEL_USERNAME:
+    if not config.CHANNEL_USERNAME:
         print("Error: CHANNEL_USERNAME not found in .env or hardcoded. Set CHANNEL_USERNAME for subscription check.")
         exit(1)
+    os.makedirs(config.GENERATED_DIR, exist_ok=True) # Ensure generated directory exists
     cleanup_temp_files()
     import threading
     from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -466,7 +482,7 @@ if __name__ == '__main__':
         server.serve_forever()
     threading.Thread(target=run_web_server, daemon=True).start()
     
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = ApplicationBuilder().token(config.BOT_TOKEN).build()
     
     # ФИЛЬТРЫ ЗАПУСКА
     # start_filter ловит:
@@ -491,8 +507,8 @@ if __name__ == '__main__':
             MessageHandler(photo_filter, handle_user_photo)
         ],
         states={
-            WAITING_MEME_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_meme_handler)],
-            WAITING_DEMOTIVATOR_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_demotivator_handler)],
+            config.WAITING_MEME_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_meme_handler)],
+            config.WAITING_DEMOTIVATOR_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_demotivator_handler)],
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)]
     )

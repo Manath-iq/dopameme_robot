@@ -4,8 +4,15 @@ from scipy.ndimage import convolve
 import os
 import uuid
 from numba import jit
+import logging
+import config
 
-def resize_image_keep_ratio(image, max_size=600):
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+def resize_image_keep_ratio(image, max_size=config.EFFECTS_MAX_SIZE_DEFAULT):
     """
     Resizes the image so that the longest side is at most max_size.
     Maintains aspect ratio.
@@ -112,7 +119,7 @@ def liquid_resize(image_path, scale=0.5):
     img = Image.open(image_path).convert("RGB")
     
     # 1. Resize for performance (CRITICAL for Render free tier)
-    img = resize_image_keep_ratio(img, max_size=500)
+    img = resize_image_keep_ratio(img, max_size=config.LIQUID_RESIZE_MAX_SIZE)
     
     img_arr = np.array(img)
     
@@ -122,9 +129,9 @@ def liquid_resize(image_path, scale=0.5):
     steps_w = w - target_w
     
     # Safety limit
-    if steps_w > 200: steps_w = 200
+    if steps_w > config.LIQUID_RESIZE_SEAM_SAFETY_LIMIT: steps_w = config.LIQUID_RESIZE_SEAM_SAFETY_LIMIT
         
-    print(f"Liquid Resize Phase 1 (Width): removing {steps_w} seams...")
+    logging.info(f"Liquid Resize Phase 1 (Width): removing {steps_w} seams...")
     
     for _ in range(steps_w):
         energy = calc_energy(img_arr)
@@ -141,9 +148,9 @@ def liquid_resize(image_path, scale=0.5):
     steps_h = w_curr - target_h # We are reducing 'width' of rotated image
     
     # Safety limit
-    if steps_h > 200: steps_h = 200
+    if steps_h > config.LIQUID_RESIZE_SEAM_SAFETY_LIMIT: steps_h = config.LIQUID_RESIZE_SEAM_SAFETY_LIMIT
     
-    print(f"Liquid Resize Phase 2 (Height): removing {steps_h} seams...")
+    logging.info(f"Liquid Resize Phase 2 (Height): removing {steps_h} seams...")
     
     for _ in range(steps_h):
         energy = calc_energy(img_arr)
@@ -154,11 +161,8 @@ def liquid_resize(image_path, scale=0.5):
     img_arr = np.rot90(img_arr, k=-1, axes=(0, 1))
 
     result_img = Image.fromarray(np.uint8(img_arr))
-    
-    if not os.path.exists("assets/generated"):
-        os.makedirs("assets/generated")
-    
-    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+        
+    output_path = f"{config.GENERATED_DIR}/{uuid.uuid4()}.jpg"
     result_img.save(output_path)
     return output_path
 
@@ -169,35 +173,32 @@ def deep_fry_effect(image_path):
     img = Image.open(image_path).convert("RGB")
     
     # Resize slightly larger than liquid resize as this is faster
-    img = resize_image_keep_ratio(img, max_size=800)
+    img = resize_image_keep_ratio(img, max_size=config.EFFECTS_MAX_SIZE_DEEPFRY)
     
     # 1. Add Noise
     # Convert to numpy to add noise efficiently
     img_arr = np.array(img)
-    noise = np.random.randint(0, 25, img_arr.shape, dtype='uint8') # Subtle noise
+    noise = np.random.randint(config.DEEPFRY_NOISE_RANGE[0], config.DEEPFRY_NOISE_RANGE[1], img_arr.shape, dtype='uint8') # Subtle noise
     # Add noise and clip to valid range
     img_arr = np.clip(img_arr.astype(int) + noise, 0, 255).astype('uint8')
     img = Image.fromarray(img_arr)
     
     # 2. Enhance Saturation (Fried colors)
     converter = ImageEnhance.Color(img)
-    img = converter.enhance(3.0) # 3x Saturation
+    img = converter.enhance(config.DEEPFRY_COLOR_ENHANCE_FACTOR) # 3x Saturation
     
     # 3. Enhance Contrast (Deep burn)
     converter = ImageEnhance.Contrast(img)
-    img = converter.enhance(2.0) # 2x Contrast
+    img = converter.enhance(config.DEEPFRY_CONTRAST_ENHANCE_FACTOR) # 2x Contrast
     
     # 4. Enhance Sharpness (Crispy edges)
     converter = ImageEnhance.Sharpness(img)
-    img = converter.enhance(5.0) # 5x Sharpness
+    img = converter.enhance(config.DEEPFRY_SHARPNESS_ENHANCE_FACTOR) # 5x Sharpness
     
-    if not os.path.exists("assets/generated"):
-        os.makedirs("assets/generated")
-    
-    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    output_path = f"{config.GENERATED_DIR}/{uuid.uuid4()}.jpg"
     
     # 5. Save with low quality for JPEG artifacts
-    img.save(output_path, "JPEG", quality=8)
+    img.save(output_path, "JPEG", quality=config.DEEPFRY_JPEG_QUALITY)
     
     return output_path
 
@@ -254,26 +255,23 @@ def warp_effect(image_path):
     img = Image.open(image_path).convert("RGB")
     
     # Resize for consistent speed
-    img = resize_image_keep_ratio(img, max_size=600)
+    img = resize_image_keep_ratio(img, max_size=config.EFFECTS_MAX_SIZE_DEFAULT)
     img_arr = np.array(img)
     
     h, w, _ = img_arr.shape
     
     # Radius covers most of the image, Strength is how many radians to twist
     radius = min(h, w) * 0.9 / 2
-    strength = 5.0 # Pretty strong swirl
+    strength = config.WARP_STRENGTH # Pretty strong swirl
     
-    print(f"Applying Swirl Warp: {w}x{h}...")
+    logging.info(f"Applying Swirl Warp: {w}x{h}...")
     
     # Numba magic
     result_arr = apply_swirl_numba(img_arr, radius, strength)
     
     result_img = Image.fromarray(result_arr)
-    
-    if not os.path.exists("assets/generated"):
-        os.makedirs("assets/generated")
-    
-    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+        
+    output_path = f"{config.GENERATED_DIR}/{uuid.uuid4()}.jpg"
     result_img.save(output_path)
     return output_path
 
@@ -328,15 +326,14 @@ def lens_bulge_effect(image_path):
     Apply Fisheye/Bulge effect (towards the viewer).
     """
     img = Image.open(image_path).convert("RGB")
-    img = resize_image_keep_ratio(img, max_size=600)
+    img = resize_image_keep_ratio(img, max_size=config.EFFECTS_MAX_SIZE_DEFAULT)
     img_arr = np.array(img)
     
     # k < 0 expands the center
-    result_arr = apply_lens_numba(img_arr, k=-0.5)
+    result_arr = apply_lens_numba(img_arr, k=config.BULGE_K_VALUE)
     
     result_img = Image.fromarray(result_arr)
-    if not os.path.exists("assets/generated"): os.makedirs("assets/generated")
-    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    output_path = f"{config.GENERATED_DIR}/{uuid.uuid4()}.jpg"
     result_img.save(output_path)
     return output_path
 
@@ -345,15 +342,14 @@ def lens_pinch_effect(image_path):
     Apply Pinch/Hole effect (away from the viewer).
     """
     img = Image.open(image_path).convert("RGB")
-    img = resize_image_keep_ratio(img, max_size=600)
+    img = resize_image_keep_ratio(img, max_size=config.EFFECTS_MAX_SIZE_DEFAULT)
     img_arr = np.array(img)
     
     # k > 0 shrinks the center (tunnel)
-    result_arr = apply_lens_numba(img_arr, k=0.5)
+    result_arr = apply_lens_numba(img_arr, k=config.PINCH_K_VALUE)
     
     result_img = Image.fromarray(result_arr)
-    if not os.path.exists("assets/generated"): os.makedirs("assets/generated")
-    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    output_path = f"{config.GENERATED_DIR}/{uuid.uuid4()}.jpg"
     result_img.save(output_path)
     return output_path
 
@@ -364,24 +360,21 @@ def crispy_effect(image_path):
     img = Image.open(image_path).convert("RGB")
     
     # Resize for consistent speed
-    img = resize_image_keep_ratio(img, max_size=800)
+    img = resize_image_keep_ratio(img, max_size=config.EFFECTS_MAX_SIZE_CRISPY)
     
     # 1. Enhance Sharpness (Extreme!)
     converter = ImageEnhance.Sharpness(img)
-    img = converter.enhance(15.0) # Very high sharpness
+    img = converter.enhance(config.CRISPY_SHARPNESS_ENHANCE_FACTOR) # Very high sharpness
     
     # 2. Enhance Contrast (Blow out blacks and whites)
     converter = ImageEnhance.Contrast(img)
-    img = converter.enhance(3.0) # Very high contrast
+    img = converter.enhance(config.CRISPY_CONTRAST_ENHANCE_FACTOR) # Very high contrast
     
     # 3. Enhance Brightness (Makes it more "blown out")
     converter = ImageEnhance.Brightness(img)
-    img = converter.enhance(1.5) # A bit brighter
-
-    if not os.path.exists("assets/generated"):
-        os.makedirs("assets/generated")
+    img = converter.enhance(config.CRISPY_BRIGHTNESS_ENHANCE_FACTOR) # A bit brighter
     
-    output_path = f"assets/generated/{uuid.uuid4()}.jpg"
+    output_path = f"{config.GENERATED_DIR}/{uuid.uuid4()}.jpg"
     img.save(output_path) # No low JPEG quality here, as it's not deep fry
     
     return output_path
