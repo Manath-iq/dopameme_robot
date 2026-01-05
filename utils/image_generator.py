@@ -49,9 +49,10 @@ def add_watermark(img):
         txt = Image.new('RGBA', img.size, (255,255,255,0))
         d = ImageDraw.Draw(txt)
         
-        # Calculate size proportional to image (Increased to 5%)
-        font_size = max(20, int(min(width, height) * 0.05)) 
-        font = get_font(font_size, "Impact") # Meme font
+        # Calculate size proportional to image (Reduced to 3.5%)
+        # Using min(width, height) is safer for extreme aspect ratios
+        font_size = max(15, int(min(width, height) * 0.035)) 
+        font = get_font(font_size, "Impact")
         
         text = "@dopamemerobot"
         
@@ -62,24 +63,27 @@ def add_watermark(img):
         
         # Position: bottom left with margin
         margin = max(10, int(font_size / 2))
-        x = margin # Left side
+        x = margin
         y = height - text_h - margin * 1.5 
         
-        # Draw text: white with alpha=153 (~60% opacity)
-        d.text((x, y), text, font=font, fill=(255, 255, 255, 153))
+        # Dynamic outline width (proportional to font size)
+        outline_width = max(1, int(font_size // 15))
         
-        # Outline for better visibility (black with same opacity)
-        outline_width = 2
+        # Draw outline (black, 60% opacity)
         for dx in range(-outline_width, outline_width+1):
             for dy in range(-outline_width, outline_width+1):
                 if dx == 0 and dy == 0: continue
+                # Draw circular-ish stroke for better quality
+                if dx*dx + dy*dy > outline_width*outline_width: continue
+                
                 d.text((x+dx, y+dy), text, font=font, fill=(0, 0, 0, 153))
         
+        # Draw main text (white, 60% opacity)
         d.text((x, y), text, font=font, fill=(255, 255, 255, 153))
         
         # Composite
         out = Image.alpha_composite(img, txt)
-        return out.convert("RGB") # Return RGB for saving as JPG
+        return out.convert("RGB")
         
     except Exception as e:
         print(f"Watermark failed: {e}")

@@ -21,7 +21,9 @@
 
 - **UX Tweak:** Configured the bot to show the Welcome Menu on *any* text message, not just `/start`.
 
-- **Visual Branding:** Added an automatic watermark (`@dopamemerobot`) to the **bottom-left** corner using the **Impact** font. Increased opacity to 60% and added a black outline for better visibility on any background.
+- **Visual Branding:** Added an automatic watermark (`@dopamemerobot`) to the **bottom-left** corner using the **Impact** font.
+  - **Smart Scaling:** Font size (3.5%) and outline width are now fully proportional to the image resolution, ensuring consistent legibility on both thumbnails and 4K images.
+  - **Visibility:** 60% opacity with adaptive black outline.
 
 ## 🐛 Critical Bug Fixes & UX Polish
 - **Telegram API Compatibility:** Resolved a critical `InputSticker` initialization error (`InputSticker.__init__() got an unexpected keyword argument 'format'`) by updating the syntax to `InputSticker(file, emoji_list=[...])` for `python-telegram-bot` v20+.
